@@ -1,28 +1,20 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import date
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import and_, select
 
 from app.core.config import settings
 from app.core.security import hash_password
 from app.db.base import Base
-from app.db.session import engine
+from app.db.session import async_session, engine
 from app.models import (  # noqa: F401  — ensure all models are registered
-    CompanyRule,
-    CompanyRole,
-    Department,
-    LeaveBalance,
-    LeaveRequest,
-    LeaveType,
-    User,
-    WorkUpdate,
-    ChatFeedback,
-)
-from app.db.session import async_session
+    ChatFeedback, CompanyRole, CompanyRule, Department, LeaveBalance,
+    LeaveRequest, LeaveType, User, WorkUpdate)
 from app.services.cache_service import cache_service
 from app.services.memory_service import memory_service
 
@@ -45,6 +37,7 @@ async def lifespan(app: FastAPI):
             ("casual", 18, False, 5),
             ("sick", 12, False, 3),
             ("earned", 10, True, 10),
+            ("paid", 40, False, 30),
             ("unpaid", 0, False, 0),
         ]
         for name, days, carry, max_days in leave_types_data:
@@ -59,12 +52,8 @@ async def lifespan(app: FastAPI):
                 )
 
         # Seed default admin
-        result = await db.execute(
-            select(User).where(User.email == "admin@hr.com")
-        )
+        result = await db.execute(select(User).where(User.email == "admin@hr.com"))
         if not result.scalar_one_or_none():
-            from datetime import date
-
             admin = User(
                 name="Admin",
                 email="admin@hr.com",
@@ -77,8 +66,47 @@ async def lifespan(app: FastAPI):
 
         await db.commit()
 
+        # Sync missing LeaveBalance for all existing users
+        result = await db.execute(select(LeaveType))
+        all_types = result.scalars().all()
+        result = await db.execute(
+            select(User).where(User.is_active == True)
+        )  # noqa: E712
+        all_users = result.scalars().all()
+        for user in all_users:
+            for lt in all_types:
+                if lt.name == "unpaid":
+                    continue
+                result = await db.execute(
+                    select(LeaveBalance).where(
+                        and_(
+                            LeaveBalance.user_id == user.id,
+                            LeaveBalance.leave_type_id == lt.id,
+                        )
+                    )
+                )
+                if not result.scalar_one_or_none():
+                    year = (
+                        user.joining_date.year
+                        if user.joining_date
+                        else date.today().year
+                    )
+                    db.add(
+                        LeaveBalance(
+                            user_id=user.id,
+                            leave_type_id=lt.id,
+                            year=year,
+                            total_days=lt.days_per_year,
+                            used_days=0,
+                            remaining_days=lt.days_per_year,
+                        )
+                    )
+        await db.commit()
+
     # Connect Redis & Memory Service
     await cache_service.connect()
+    # Flush stale cached data from previous server sessions
+    await cache_service.delete_pattern("leave_balance:*")
     await memory_service.connect()
 
     yield
@@ -117,7 +145,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # ── Include routers ──────────────────────────────────────────────────────────
 
-from app.routers import auth, chat, leaves, roles, rules, users, work_updates  # noqa: E402
+from app.routers import users  # noqa: E402
+from app.routers import auth, chat, leaves, roles, rules, work_updates
 
 app.include_router(auth.router)
 app.include_router(users.router)

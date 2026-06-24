@@ -12,7 +12,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 
-from app.ai.tools import leave_balance_tool, rag_tool, work_updates_tool, web_search_tool
+from app.ai.tools import apply_leave_tool, add_work_update_tool, leave_balance_tool, rag_tool, work_updates_tool, web_search_tool
 from app.core.config import settings
 from app.services.cache_service import cache_service
 
@@ -188,12 +188,14 @@ async def classify_intent(state: HRAgentState) -> dict:
         "You are an intent classifier for an HR assistant. "
         "Classify the following query into exactly one category:\n"
         "- rag: questions about company policies, roles, rules, or general HR knowledge\n"
-        "- leave: questions about leave balance, leave history, applying for leave\n"
-        "- work: questions about work updates, tasks, or progress\n"
+        "- leave: questions about leave balance or leave history (read-only queries)\n"
+        "- apply_leave: applying for leave, requesting time off, asking to take leave\n"
+        "- work: questions about existing work updates, tasks, or progress (read-only queries)\n"
+        "- add_work_update: logging or adding new work updates, reporting task completion, saving daily work\n"
         "- web_search: questions about external/industry trends, generic info not present in internal docs\n"
         "- direct: general greeting or conversational queries that don't need any tool search\n\n"
         f"Query: {primary_query}\n\n"
-        "Respond with ONLY the category name (rag, leave, work, web_search, or direct)."
+        "Respond with ONLY the category name (rag, leave, apply_leave, work, add_work_update, web_search, or direct)."
     )
 
     response = await llm.ainvoke(
@@ -205,8 +207,12 @@ async def classify_intent(state: HRAgentState) -> dict:
     intent = clean_content(response.content).strip().lower()
 
     # Map variations
-    if intent not in ("rag", "leave", "work", "web_search", "direct"):
-        if "leave" in intent:
+    if intent not in ("rag", "leave", "apply_leave", "work", "add_work_update", "web_search", "direct"):
+        if "apply" in intent and "leave" in intent:
+            intent = "apply_leave"
+        elif "add" in intent and "work" in intent:
+            intent = "add_work_update"
+        elif "leave" in intent:
             intent = "leave"
         elif "work" in intent or "update" in intent:
             intent = "work"
@@ -321,6 +327,106 @@ async def web_search_node(state: HRAgentState) -> dict:
     return {"context": context, "citations": citations}
 
 
+async def apply_leave_node(state: HRAgentState) -> dict:
+    """Extract leave request details from query and apply for leave."""
+    llm = await _get_llm()
+    query = state["messages"][-1].content
+    user_id = state.get("user_id", "")
+    if not user_id:
+        return {"context": "User ID not available. Please log in to apply for leave."}
+
+    extraction_prompt = (
+        "Extract leave request details from the following query. "
+        "Assume today is Wednesday, June 24, 2026.\n\n"
+        f"Query: {query}\n\n"
+        "Respond in strict JSON format with keys:\n"
+        "- leave_type: one of 'casual', 'sick', 'earned', 'unpaid'\n"
+        "- from_date: ISO date string (YYYY-MM-DD)\n"
+        "- to_date: ISO date string (YYYY-MM-DD)\n"
+        "- reason: the reason for leave\n"
+        "If any detail is missing, make a reasonable assumption or use today's date.\n"
+        "Do not include markdown tags like ```json in your response."
+    )
+
+    try:
+        res = await llm.ainvoke([
+            SystemMessage(content="You extract leave details as JSON."),
+            HumanMessage(content=extraction_prompt),
+        ])
+        cleaned = clean_content(res.content).strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1]
+        if cleaned.endswith("```"):
+            cleaned = cleaned.rsplit("\n", 1)[0]
+        if cleaned.startswith("json"):
+            cleaned = cleaned.split("json", 1)[1].strip()
+        data = json.loads(cleaned)
+        result = await apply_leave_tool(
+            user_id=user_id,
+            leave_type=data.get("leave_type", "casual"),
+            from_date=data.get("from_date", ""),
+            to_date=data.get("to_date", ""),
+            reason=data.get("reason", query),
+        )
+    except json.JSONDecodeError:
+        result = ("I couldn't understand the leave details from your request. "
+                  "Please specify: leave type (casual/sick/earned/unpaid), start date, end date, and reason.")
+    except Exception as e:
+        result = f"Error processing leave request: {str(e)}"
+
+    return {"context": result, "citations": []}
+
+
+async def add_work_update_node(state: HRAgentState) -> dict:
+    """Extract work update details from query and create one."""
+    llm = await _get_llm()
+    query = state["messages"][-1].content
+    user_id = state.get("user_id", "")
+    if not user_id:
+        return {"context": "User ID not available. Please log in to add work updates."}
+
+    extraction_prompt = (
+        "Extract work update details from the following query. "
+        "Assume today is Wednesday, June 24, 2026.\n\n"
+        f"Query: {query}\n\n"
+        "Respond in strict JSON format with keys:\n"
+        "- title: a short title for the work update\n"
+        "- description: a detailed description of what was done\n"
+        "- date: ISO date string (YYYY-MM-DD), default to today if not specified\n"
+        "- tags: list of tags (strings), empty list if not specified\n"
+        "If any detail is missing, make a reasonable assumption.\n"
+        "Do not include markdown tags like ```json in your response."
+    )
+
+    try:
+        res = await llm.ainvoke([
+            SystemMessage(content="You extract work update details as JSON."),
+            HumanMessage(content=extraction_prompt),
+        ])
+        cleaned = clean_content(res.content).strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1]
+        if cleaned.endswith("```"):
+            cleaned = cleaned.rsplit("\n", 1)[0]
+        if cleaned.startswith("json"):
+            cleaned = cleaned.split("json", 1)[1].strip()
+        data = json.loads(cleaned)
+        result = await add_work_update_tool(
+            user_id=user_id,
+            title=data.get("title", "Work Update"),
+            description=data.get("description", ""),
+            date_str=data.get("date", ""),
+            tags=data.get("tags", []),
+        )
+    except json.JSONDecodeError:
+        result = ("I couldn't understand the work update details. "
+                  "Please specify: title, description, and optionally date and tags.")
+    except Exception as e:
+        result = f"Error adding work update: {str(e)}"
+
+    return {"context": result, "citations": []}
+
+
 async def generate_response(state: HRAgentState) -> dict:
     """Generate the final response using Gemini with retrieved context/structured data."""
     llm = await _get_llm()
@@ -348,6 +454,16 @@ async def generate_response(state: HRAgentState) -> dict:
         system_prompt += (
             f"Work update information:\n{context}\n\n"
             "Help the user with their work update question."
+        )
+    elif intent == "apply_leave":
+        system_prompt += (
+            f"Leave application result:\n{context}\n\n"
+            "Inform the user about the outcome of their leave application."
+        )
+    elif intent == "add_work_update":
+        system_prompt += (
+            f"Work update creation result:\n{context}\n\n"
+            "Inform the user about the outcome of their work update creation."
         )
     elif intent == "web_search":
         system_prompt += (
@@ -436,6 +552,8 @@ def route_intent(state: HRAgentState) -> str:
         "rag": "rag_retriever",
         "leave": "db_leave_tool",
         "work": "db_work_tool",
+        "apply_leave": "apply_leave",
+        "add_work_update": "add_work_update",
         "web_search": "web_search",
         "direct": "generate_response",
     }
@@ -455,6 +573,8 @@ def get_agent():
     graph.add_node("rag_retriever", rag_retriever)
     graph.add_node("db_leave_tool", db_leave_tool_node)
     graph.add_node("db_work_tool", db_work_tool_node)
+    graph.add_node("apply_leave", apply_leave_node)
+    graph.add_node("add_work_update", add_work_update_node)
     graph.add_node("web_search", web_search_node)
     graph.add_node("generate_response", generate_response)
     graph.add_node("hallucination_check", hallucination_check)
@@ -473,15 +593,19 @@ def get_agent():
             "rag_retriever": "rag_retriever",
             "db_leave_tool": "db_leave_tool",
             "db_work_tool": "db_work_tool",
+            "apply_leave": "apply_leave",
+            "add_work_update": "add_work_update",
             "web_search": "web_search",
             "generate_response": "generate_response",
         },
     )
 
-    # All search nodes go to generate_response
+    # All search/action nodes go to generate_response
     graph.add_edge("rag_retriever", "generate_response")
     graph.add_edge("db_leave_tool", "generate_response")
     graph.add_edge("db_work_tool", "generate_response")
+    graph.add_edge("apply_leave", "generate_response")
+    graph.add_edge("add_work_update", "generate_response")
     graph.add_edge("web_search", "generate_response")
 
     # generate_response goes to hallucination check

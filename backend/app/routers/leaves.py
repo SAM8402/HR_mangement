@@ -8,19 +8,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_current_user, require_role
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.leave import (
-    LeaveActionRequest,
-    LeaveApplyRequest,
-    LeaveBalanceResponse,
-    LeaveResponse,
-)
+from app.schemas.leave import (LeaveActionRequest, LeaveApplyRequest,
+                               LeaveBalanceResponse, LeaveResponse,
+                               LeaveTypeResponse, LeaveTypeUpdateRequest)
 from app.services.cache_service import cache_service
 from app.services.leave_service import LeaveService
 
 router = APIRouter(prefix="/api/leaves", tags=["leaves"])
 
 
-@router.post("/apply", response_model=LeaveResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/apply", response_model=LeaveResponse, status_code=status.HTTP_201_CREATED
+)
 async def apply_leave(
     data: LeaveApplyRequest,
     db: AsyncSession = Depends(get_db),
@@ -32,9 +31,7 @@ async def apply_leave(
         await cache_service.invalidate_leave_balance(str(current_user.id))
         return leave
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.get("/my", response_model=list[LeaveResponse])
@@ -83,9 +80,7 @@ async def approve_leave(
         await cache_service.invalidate_leave_balance(str(leave.applicant_id))
         return leave
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.patch("/{leave_id}/reject", response_model=LeaveResponse)
@@ -101,9 +96,7 @@ async def reject_leave(
             db, leave_id, current_user.id, data.rejection_reason
         )
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.delete("/{leave_id}/cancel", response_model=LeaveResponse)
@@ -118,9 +111,24 @@ async def cancel_leave(
         await cache_service.invalidate_leave_balance(str(current_user.id))
         return leave
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.patch("/types/{type_id}", response_model=LeaveTypeResponse)
+async def update_leave_type(
+    type_id: uuid.UUID,
+    data: LeaveTypeUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "manager")),
+):
+    """Update leave type days per year (admin/manager only)."""
+    try:
+        leave_type = await LeaveService.update_leave_type_days(
+            db, type_id, data.days_per_year
         )
+        return leave_type
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.get("/all", response_model=list[LeaveResponse])

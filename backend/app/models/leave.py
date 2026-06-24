@@ -3,16 +3,8 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import (
-    Boolean,
-    Date,
-    DateTime,
-    Enum,
-    ForeignKey,
-    Integer,
-    String,
-    Text,
-)
+from sqlalchemy import (Boolean, Date, DateTime, Enum, ForeignKey, Integer,
+                        String, Text)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -30,6 +22,7 @@ class LeaveType(Base):
             "casual",
             "sick",
             "earned",
+            "paid",
             "unpaid",
             name="leave_type_enum",
         ),
@@ -38,7 +31,9 @@ class LeaveType(Base):
     )
     days_per_year: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     carry_forward: Mapped[bool] = mapped_column(Boolean, default=False)
-    max_consecutive_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_consecutive_days: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
 
 
 class LeaveBalance(Base):

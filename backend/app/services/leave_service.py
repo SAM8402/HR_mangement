@@ -17,9 +17,7 @@ class LeaveService:
     # ── Approver routing ──────────────────────────────────────────────────
 
     @staticmethod
-    async def _find_approver(
-        db: AsyncSession, applicant: User
-    ) -> uuid.UUID | None:
+    async def _find_approver(db: AsyncSession, applicant: User) -> uuid.UUID | None:
         """Route to the correct approver based on the applicant's role."""
         role = applicant.role
         dept_id = applicant.department_id
@@ -258,9 +256,7 @@ class LeaveService:
     # ── Queries ───────────────────────────────────────────────────────────
 
     @staticmethod
-    async def get_my_leaves(
-        db: AsyncSession, user_id: uuid.UUID
-    ) -> list[LeaveRequest]:
+    async def get_my_leaves(db: AsyncSession, user_id: uuid.UUID) -> list[LeaveRequest]:
         result = await db.execute(
             select(LeaveRequest)
             .where(LeaveRequest.applicant_id == user_id)
@@ -292,9 +288,20 @@ class LeaveService:
         return list(result.scalars().all())
 
     @staticmethod
-    async def get_balance(
-        db: AsyncSession, user_id: uuid.UUID
-    ) -> list[dict]:
+    async def update_leave_type_days(
+        db: AsyncSession, type_id: uuid.UUID, days_per_year: int
+    ) -> LeaveType:
+        result = await db.execute(select(LeaveType).where(LeaveType.id == type_id))
+        leave_type = result.scalar_one_or_none()
+        if not leave_type:
+            raise ValueError("Leave type not found")
+        leave_type.days_per_year = days_per_year
+        await db.flush()
+        await db.refresh(leave_type)
+        return leave_type
+
+    @staticmethod
+    async def get_balance(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
         result = await db.execute(
             select(LeaveBalance, LeaveType.name)
             .join(LeaveType, LeaveBalance.leave_type_id == LeaveType.id)

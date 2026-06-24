@@ -41,7 +41,12 @@ export const useLeaveStore = defineStore('leave', () => {
   async function fetchBalance() {
     try {
       const res = await leavesApi.getBalance()
-      balance.value = res.data
+      balance.value = (res.data || []).map(b => ({
+        leave_type: b.leave_type_name,
+        total: b.total_days,
+        used: b.used_days,
+        remaining: b.remaining_days,
+      }))
     } catch {
       balance.value = []
     }

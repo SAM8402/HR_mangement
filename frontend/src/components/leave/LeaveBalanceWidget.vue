@@ -38,7 +38,10 @@ function formatType(type) {
     personal: 'Personal Leave',
     maternity: 'Maternity Leave',
     paternity: 'Paternity Leave',
-    unpaid: 'Unpaid Leave'
+    unpaid: 'Unpaid Leave',
+    casual: 'Casual Leave',
+    earned: 'Earned Leave',
+    paid: 'Paid Leave'
   }
   return types[type] || type
 }

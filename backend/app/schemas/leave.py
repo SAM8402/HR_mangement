@@ -43,3 +43,17 @@ class LeaveBalanceResponse(BaseModel):
 
 class LeaveActionRequest(BaseModel):
     rejection_reason: str | None = None
+
+
+class LeaveTypeUpdateRequest(BaseModel):
+    days_per_year: int
+
+
+class LeaveTypeResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    days_per_year: int
+    carry_forward: bool
+    max_consecutive_days: int
+
+    model_config = {"from_attributes": True}

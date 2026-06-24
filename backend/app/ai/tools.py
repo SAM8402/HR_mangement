@@ -9,6 +9,7 @@ from app.ai.embeddings import search_similar
 from app.db.session import async_session
 from app.models.leave import LeaveBalance, LeaveType
 from app.models.work_update import WorkUpdate
+from app.services.cache_service import cache_service
 
 
 async def rag_tool(query: str) -> str:
@@ -82,4 +83,73 @@ async def web_search_tool(query: str) -> str:
             return "\n\n---\n\n".join(lines)
     except Exception as e:
         return f"Web search failed: {str(e)}"
+
+
+async def apply_leave_tool(user_id: str, leave_type: str, from_date: str, to_date: str, reason: str) -> str:
+    """Apply for leave in the system."""
+    from datetime import date
+
+    from app.schemas.leave import LeaveApplyRequest
+    from app.services.leave_service import LeaveService
+
+    try:
+        from_date_obj = date.fromisoformat(from_date)
+        to_date_obj = date.fromisoformat(to_date)
+    except ValueError:
+        return f"Invalid date format '{from_date}' or '{to_date}'. Please use YYYY-MM-DD."
+
+    data = LeaveApplyRequest(
+        leave_type=leave_type,
+        from_date=from_date_obj,
+        to_date=to_date_obj,
+        reason=reason,
+    )
+
+    async with async_session() as db:
+        try:
+            leave = await LeaveService.apply_leave(db, uuid.UUID(user_id), data)
+            await db.commit()
+            await cache_service.invalidate_leave_balance(user_id)
+            return (
+                f"Leave request submitted successfully!\n"
+                f"  Type: {leave_type.title()}\n"
+                f"  From: {from_date}\n"
+                f"  To: {to_date}\n"
+                f"  Business Days: {leave.business_days}\n"
+                f"  Reason: {reason}\n"
+                f"  Status: {leave.status.title()}"
+            )
+        except ValueError as e:
+            return f"Failed to apply for leave: {str(e)}"
+
+
+async def add_work_update_tool(user_id: str, title: str, description: str, date_str: str, tags: list[str] | None = None) -> str:
+    """Add a work update entry."""
+    from datetime import date
+
+    try:
+        update_date = date.fromisoformat(date_str)
+    except ValueError:
+        return f"Invalid date format '{date_str}'. Please use YYYY-MM-DD."
+
+    async with async_session() as db:
+        update = WorkUpdate(
+            user_id=uuid.UUID(user_id),
+            title=title,
+            description=description,
+            date=update_date,
+            tags=tags or [],
+        )
+        db.add(update)
+        await db.flush()
+        await db.refresh(update)
+        await db.commit()
+        await cache_service.invalidate_work_updates(user_id)
+        tag_str = ", ".join(tags) if tags else "none"
+        return (
+            f"Work update created successfully!\n"
+            f"  Title: {title}\n"
+            f"  Date: {date_str}\n"
+            f"  Tags: {tag_str}"
+        )
 
