@@ -10,7 +10,7 @@
 
     <div class="card-body">
       <div class="card-dates">
-        <span>{{ formatDate(leave.start_date) }} - {{ formatDate(leave.end_date) }}</span>
+        <span>{{ formatDate(leave.from_date) }} - {{ formatDate(leave.to_date) }}</span>
         <span class="days-count">{{ calculateDays }} day(s)</span>
       </div>
       <p v-if="leave.reason" class="card-reason">{{ leave.reason }}</p>
@@ -46,7 +46,10 @@ function formatType(type) {
     personal: 'Personal',
     maternity: 'Maternity',
     paternity: 'Paternity',
-    unpaid: 'Unpaid'
+    unpaid: 'Unpaid',
+    casual: 'Casual',
+    earned: 'Earned',
+    paid: 'Paid'
   }
   return types[type] || type
 }
@@ -59,9 +62,9 @@ function formatDate(dateStr) {
 }
 
 const calculateDays = computed(() => {
-  if (!props.leave.start_date || !props.leave.end_date) return 0
-  const start = new Date(props.leave.start_date)
-  const end = new Date(props.leave.end_date)
+  if (!props.leave.from_date || !props.leave.to_date) return 0
+  const start = new Date(props.leave.from_date)
+  const end = new Date(props.leave.to_date)
   const diff = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1
   return diff > 0 ? diff : 0
 })

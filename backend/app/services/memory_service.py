@@ -10,6 +10,9 @@ from typing import Any
 import redis.asyncio as aioredis
 
 from app.core.config import settings
+from app.db.session import async_session
+from app.models.chat_session import ChatSession, ChatMessage
+from sqlalchemy import select, desc
 
 
 class MemoryService:
@@ -35,78 +38,134 @@ class MemoryService:
     # ────────────────────────────────────────────────────────────────────
 
     async def list_sessions(self, user_id: str) -> list[dict]:
-        r = await self._ensure_redis()
-        key = f"chat_sessions:{user_id}"
-        ids = await r.zrevrange(key, 0, -1)
-        sessions = []
-        for sid in ids:
-            data = await r.hgetall(f"chat_session:{user_id}:{sid}")
-            if data:
-                sessions.append({
-                    "session_id": sid,
-                    "title": data.get("title", "New Chat"),
-                    "created_at": data.get("created_at", ""),
-                    "updated_at": data.get("updated_at", ""),
-                    "message_count": int(data.get("message_count", 0)),
-                })
-        return sessions
+        try:
+            user_uuid = uuid.UUID(str(user_id))
+        except ValueError:
+            return []
+        async with async_session() as db:
+            result = await db.execute(
+                select(ChatSession)
+                .where(ChatSession.user_id == user_uuid)
+                .order_by(desc(ChatSession.updated_at))
+            )
+            sessions = result.scalars().all()
+            return [
+                {
+                    "session_id": str(s.id),
+                    "title": s.title,
+                    "created_at": s.created_at.isoformat() if s.created_at else "",
+                    "updated_at": s.updated_at.isoformat() if s.updated_at else "",
+                    "message_count": len(s.messages),
+                }
+                for s in sessions
+            ]
 
     async def create_session(self, user_id: str, title: str = "New Chat") -> str:
-        r = await self._ensure_redis()
-        session_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc).isoformat()
-        await r.hset(f"chat_session:{user_id}:{session_id}", mapping={
-            "title": title,
-            "created_at": now,
-            "updated_at": now,
-            "message_count": "0",
-        })
-        await r.zadd(f"chat_sessions:{user_id}", {session_id: time.time()})
-        return session_id
+        try:
+            user_uuid = uuid.UUID(str(user_id))
+        except ValueError:
+            # Fallback to a random generated UUID if invalid user_id format
+            user_uuid = uuid.uuid4()
+        async with async_session() as db:
+            session = ChatSession(
+                user_id=user_uuid,
+                title=title,
+            )
+            db.add(session)
+            await db.commit()
+            return str(session.id)
 
     async def delete_session(self, user_id: str, session_id: str) -> None:
-        r = await self._ensure_redis()
-        await r.delete(f"chat_history:{user_id}:{session_id}")
-        await r.delete(f"working:{user_id}:{session_id}")
-        await r.delete(f"agent_state:{user_id}:{session_id}")
-        await r.delete(f"execution:{user_id}:{session_id}:trace")
-        await r.delete(f"chat_session:{user_id}:{session_id}")
-        await r.zrem(f"chat_sessions:{user_id}", session_id)
+        try:
+            session_uuid = uuid.UUID(str(session_id))
+        except ValueError:
+            return
+        async with async_session() as db:
+            result = await db.execute(
+                select(ChatSession).where(ChatSession.id == session_uuid)
+            )
+            session = result.scalar_one_or_none()
+            if session:
+                await db.delete(session)
+                await db.commit()
 
     async def rename_session(self, user_id: str, session_id: str, title: str) -> None:
-        r = await self._ensure_redis()
-        now = datetime.now(timezone.utc).isoformat()
-        await r.hset(f"chat_session:{user_id}:{session_id}", "title", title)
-        await r.hset(f"chat_session:{user_id}:{session_id}", "updated_at", now)
+        try:
+            session_uuid = uuid.UUID(str(session_id))
+        except ValueError:
+            return
+        async with async_session() as db:
+            result = await db.execute(
+                select(ChatSession).where(ChatSession.id == session_uuid)
+            )
+            session = result.scalar_one_or_none()
+            if session:
+                session.title = title
+                session.updated_at = datetime.now(timezone.utc)
+                await db.commit()
 
     async def touch_session(self, user_id: str, session_id: str) -> None:
-        r = await self._ensure_redis()
-        now = datetime.now(timezone.utc).isoformat()
-        await r.hset(f"chat_session:{user_id}:{session_id}", "updated_at", now)
-        await r.zadd(f"chat_sessions:{user_id}", {session_id: time.time()})
+        try:
+            session_uuid = uuid.UUID(str(session_id))
+        except ValueError:
+            return
+        async with async_session() as db:
+            result = await db.execute(
+                select(ChatSession).where(ChatSession.id == session_uuid)
+            )
+            session = result.scalar_one_or_none()
+            if session:
+                session.updated_at = datetime.now(timezone.utc)
+                await db.commit()
 
     # ────────────────────────────────────────────────────────────────────
     # 2. Working Memory — current conversation context (messages)
     # ────────────────────────────────────────────────────────────────────
 
     async def get_history(self, user_id: str, session_id: str, limit: int = 50) -> list[dict]:
-        r = await self._ensure_redis()
-        key = f"chat_history:{user_id}:{session_id}"
-        raw = await r.lrange(key, -limit, -1)
-        messages = []
-        for item in raw:
-            try:
-                messages.append(json.loads(item))
-            except json.JSONDecodeError:
-                continue
-        return messages
+        try:
+            session_uuid = uuid.UUID(str(session_id))
+        except ValueError:
+            return []
+        async with async_session() as db:
+            result = await db.execute(
+                select(ChatMessage)
+                .where(ChatMessage.session_id == session_uuid)
+                .order_by(ChatMessage.created_at.asc())
+            )
+            messages = result.scalars().all()
+            if len(messages) > limit:
+                messages = messages[-limit:]
+            return [
+                {
+                    "role": m.role,
+                    "content": m.content,
+                    "citations": m.citations or [],
+                    "timestamp": m.created_at.isoformat() if m.created_at else "",
+                }
+                for m in messages
+            ]
 
     async def append_history(self, user_id: str, session_id: str, entry: dict) -> None:
-        r = await self._ensure_redis()
-        key = f"chat_history:{user_id}:{session_id}"
-        await r.rpush(key, json.dumps(entry, default=str))
-        await r.ltrim(key, -100, -1)
-        await r.hincrby(f"chat_session:{user_id}:{session_id}", "message_count", 1)
+        try:
+            session_uuid = uuid.UUID(str(session_id))
+        except ValueError:
+            return
+        async with async_session() as db:
+            msg = ChatMessage(
+                session_id=session_uuid,
+                role=entry.get("role", "user"),
+                content=entry.get("content", ""),
+                citations=entry.get("citations"),
+            )
+            db.add(msg)
+            result = await db.execute(
+                select(ChatSession).where(ChatSession.id == session_uuid)
+            )
+            session = result.scalar_one_or_none()
+            if session:
+                session.updated_at = datetime.now(timezone.utc)
+            await db.commit()
 
     async def set_working_context(self, user_id: str, session_id: str, context: dict) -> None:
         r = await self._ensure_redis()

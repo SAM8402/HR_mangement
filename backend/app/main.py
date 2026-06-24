@@ -14,7 +14,7 @@ from app.db.base import Base
 from app.db.session import async_session, engine
 from app.models import (  # noqa: F401  — ensure all models are registered
     Attendance, ChatFeedback, CompanyRole, CompanyRule, Department,
-    LeaveBalance, LeaveRequest, LeaveType, User, WorkUpdate)
+    LeaveBalance, LeaveRequest, LeaveType, User, WorkUpdate, ChatSession, ChatMessage)
 from app.services.cache_service import cache_service
 from app.services.memory_service import memory_service
 

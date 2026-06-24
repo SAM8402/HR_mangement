@@ -80,6 +80,13 @@ export const useLeaveStore = defineStore('leave', () => {
     try {
       await leavesApi.approveLeave(id)
       pendingLeaves.value = pendingLeaves.value.filter(l => l.id !== id)
+      // Update local state in allLeaves if present
+      const req = allLeaves.value.find(l => l.id === id)
+      if (req) {
+        req.status = 'approved'
+      }
+      // Re-fetch balance since approved leave changes the totals
+      await fetchBalance()
       return { success: true }
     } catch (err) {
       return {
@@ -93,6 +100,12 @@ export const useLeaveStore = defineStore('leave', () => {
     try {
       await leavesApi.rejectLeave(id, reason)
       pendingLeaves.value = pendingLeaves.value.filter(l => l.id !== id)
+      // Update local state in allLeaves if present
+      const req = allLeaves.value.find(l => l.id === id)
+      if (req) {
+        req.status = 'rejected'
+        req.rejection_reason = reason
+      }
       return { success: true }
     } catch (err) {
       return {
@@ -106,6 +119,12 @@ export const useLeaveStore = defineStore('leave', () => {
     try {
       await leavesApi.cancelLeave(id)
       await fetchMyLeaves()
+      await fetchBalance()
+      // Update local state in allLeaves if present
+      const req = allLeaves.value.find(l => l.id === id)
+      if (req) {
+        req.status = 'cancelled'
+      }
       return { success: true }
     } catch (err) {
       return {

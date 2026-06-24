@@ -25,11 +25,10 @@
               <label>Leave Type</label>
               <select v-model="leaveForm.leave_type" required>
                 <option value="">Select type</option>
-                <option value="annual">Annual Leave</option>
+                <option value="casual">Casual Leave</option>
                 <option value="sick">Sick Leave</option>
-                <option value="personal">Personal Leave</option>
-                <option value="maternity">Maternity Leave</option>
-                <option value="paternity">Paternity Leave</option>
+                <option value="earned">Earned Leave</option>
+                <option value="paid">Paid Leave</option>
                 <option value="unpaid">Unpaid Leave</option>
               </select>
             </div>
@@ -37,11 +36,11 @@
           <div class="form-row">
             <div class="form-group">
               <label>From Date</label>
-              <input type="date" v-model="leaveForm.start_date" required />
+              <input type="date" v-model="leaveForm.from_date" required />
             </div>
             <div class="form-group">
               <label>To Date</label>
-              <input type="date" v-model="leaveForm.end_date" required />
+              <input type="date" v-model="leaveForm.to_date" required />
             </div>
           </div>
           <div class="form-group">
@@ -121,8 +120,8 @@ const permissions = usePermissions()
 const activeTab = ref('apply')
 const leaveForm = ref({
   leave_type: '',
-  start_date: '',
-  end_date: '',
+  from_date: '',
+  to_date: '',
   reason: ''
 })
 
@@ -140,7 +139,7 @@ const availableTabs = computed(() => {
 async function handleApplyLeave() {
   const result = await leaveStore.applyLeave(leaveForm.value)
   if (result.success) {
-    leaveForm.value = { leave_type: '', start_date: '', end_date: '', reason: '' }
+    leaveForm.value = { leave_type: '', from_date: '', to_date: '', reason: '' }
     activeTab.value = 'my'
   }
 }

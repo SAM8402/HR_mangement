@@ -1,7 +1,7 @@
 import api from './axios.js'
 
 export function applyLeave(data) {
-  return api.post('/leaves', data)
+  return api.post('/leaves/apply', data)
 }
 
 export function getMyLeaves() {
@@ -17,17 +17,17 @@ export function getPendingLeaves() {
 }
 
 export function getAllLeaves(params) {
-  return api.get('/leaves', { params })
+  return api.get('/leaves/all', { params })
 }
 
 export function approveLeave(id) {
-  return api.post(`/leaves/${id}/approve`)
+  return api.patch(`/leaves/${id}/approve`)
 }
 
 export function rejectLeave(id, reason) {
-  return api.post(`/leaves/${id}/reject`, { reason })
+  return api.patch(`/leaves/${id}/reject`, { rejection_reason: reason })
 }
 
 export function cancelLeave(id) {
-  return api.post(`/leaves/${id}/cancel`)
+  return api.delete(`/leaves/${id}/cancel`)
 }

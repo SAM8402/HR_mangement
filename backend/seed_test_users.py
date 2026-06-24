@@ -65,6 +65,7 @@ async def main():
         ]
 
         existing_users = {}
+        all_users = []
         for ud in users_data:
             res = await db.execute(select(User).where(User.email == ud["email"]))
             u = res.scalar_one_or_none()
@@ -82,9 +83,10 @@ async def main():
                 await db.flush()
                 print(f"  Created {ud['role']}: {ud['name']} ({ud['email']})")
             existing_users[ud["role"]] = u
+            all_users.append(u)
 
         # ── Leave Balances ──────────────────────────────────────────
-        for user in existing_users.values():
+        for user in all_users:
             for lt in leave_types.values():
                 if lt.name == "unpaid":
                     continue
@@ -92,6 +94,7 @@ async def main():
                     select(LeaveBalance).where(
                         LeaveBalance.user_id == user.id,
                         LeaveBalance.leave_type_id == lt.id,
+                        LeaveBalance.year == date.today().year,
                     )
                 )
                 if not res.scalar_one_or_none():
@@ -111,8 +114,8 @@ async def main():
         today = date.today()
         statuses = ["present", "present", "present", "present", "present", "late", "late", "half_day", "wfh", "absent"]
 
-        for role_key, user in existing_users.items():
-            if role_key in ("admin",):
+        for user in all_users:
+            if user.role == "admin":
                 continue
             for days_ago in range(30):
                 d = today - timedelta(days=days_ago)
@@ -148,8 +151,8 @@ async def main():
         print("Attendance records seeded.")
 
         # ── Work Updates (last 2 weeks) ─────────────────────────────
-        for role_key, user in existing_users.items():
-            if role_key in ("admin",):
+        for user in all_users:
+            if user.role == "admin":
                 continue
             for days_ago in range(14):
                 d = today - timedelta(days=days_ago)
@@ -194,8 +197,8 @@ async def main():
         alice = existing_users.get("hr")
         mike = existing_users.get("manager")
 
-        for role_key, user in existing_users.items():
-            if role_key in ("admin", "hr", "manager"):
+        for user in all_users:
+            if user.role not in ("employee",):
                 continue
             if random.random() > 0.6:
                 continue

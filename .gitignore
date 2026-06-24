@@ -69,7 +69,11 @@ instance/
 .scrapy
 
 # Sphinx documentation
-docs/_build/
+
+# docs/_build/
+*.docx
+*.pptx
+*.pdf
 
 # PyBuilder
 .pybuilder/
@@ -327,8 +331,7 @@ app.db
 *.old
 *_old.*
 *_backup.*
-.claude
-*.txt
+# *.txt
 
 # Test response files
 *_response.json
@@ -338,11 +341,9 @@ chat_response.json
 
 notebooks/
 demo/
-TEAM_12_backend.zip
 
 requirements.in
 myenv/
-docs/
 SLIDE_GENERATION_OVERVIEW.md
 
 # Logs
@@ -381,4 +382,5 @@ uploads/*
 
 ! README.md
 ! LICENSE
-*.md
+! requirements.txt
+# *.md
