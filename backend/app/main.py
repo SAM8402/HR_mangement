@@ -146,7 +146,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ── Include routers ──────────────────────────────────────────────────────────
 
 from app.routers import users  # noqa: E402
-from app.routers import attendance, auth, chat, docs, leaves, roles, rules, work_updates
+from app.routers import attendance, auth, chat, departments, docs, leaves, roles, rules, work_updates
 
 app.include_router(attendance.router)
 app.include_router(auth.router)
@@ -157,6 +157,7 @@ app.include_router(roles.router)
 app.include_router(rules.router)
 app.include_router(chat.router)
 app.include_router(docs.router)
+app.include_router(departments.router)
 
 
 @app.get("/")

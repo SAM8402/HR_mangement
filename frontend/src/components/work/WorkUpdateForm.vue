@@ -24,6 +24,17 @@
         <input v-model="form.date" type="date" required />
       </div>
       <div class="form-group">
+        <label>Department</label>
+        <select v-model="form.department" class="form-select">
+          <option value="">— Select Department —</option>
+          <option v-for="dept in departments" :key="dept" :value="dept">
+            {{ dept }}
+          </option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
         <label>Tags</label>
         <div class="tags-group">
           <label
@@ -41,6 +52,15 @@
           </label>
         </div>
       </div>
+      <div v-if="isPrivilegedUser" class="form-group">
+        <label>Assign to User</label>
+        <select v-model="form.assigned_user_id" class="form-select">
+          <option value="">— Self (default) —</option>
+          <option v-for="u in usersList" :key="u.id" :value="u.id">
+            {{ u.name }} ({{ u.email }})
+          </option>
+        </select>
+      </div>
     </div>
     <div class="form-actions">
       <button type="submit" class="btn-primary" :disabled="loading">
@@ -54,7 +74,10 @@
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted } from 'vue'
+import { useAuthStore } from '../../stores/auth.js'
+import { getDepartments } from '../../api/departments.js'
+import { getUsers } from '../../api/users.js'
 
 const props = defineProps({
   initialData: { type: Object, default: null },
@@ -62,6 +85,14 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['submit', 'cancel'])
+
+const authStore = useAuthStore()
+const departments = ref([])
+const usersList = ref([])
+
+const isPrivilegedUser = computed(() =>
+  ['admin', 'manager', 'hr'].includes(authStore.userRole)
+)
 
 const tagOptions = [
   { label: 'In Progress', value: 'in_progress' },
@@ -75,6 +106,8 @@ const form = ref({
   title: '',
   description: '',
   date: today,
+  department: '',
+  assigned_user_id: '',
   tags: []
 })
 
@@ -86,19 +119,43 @@ watch(() => props.initialData, (data) => {
       title: data.title || '',
       description: data.description || '',
       date: data.date || today,
+      department: data.department || '',
+      assigned_user_id: '',
       tags: Array.isArray(data.tags) ? [...data.tags] : []
     }
   } else {
-    form.value = { title: '', description: '', date: today, tags: [] }
+    form.value = { title: '', description: '', date: today, department: '', assigned_user_id: '', tags: [] }
   }
 }, { immediate: true })
 
 function handleSubmit() {
-  emit('submit', { ...form.value })
+  const payload = { ...form.value }
+  // Clean up empty optional fields
+  if (!payload.department) delete payload.department
+  if (!payload.assigned_user_id) delete payload.assigned_user_id
+  emit('submit', payload)
   if (!isEditing.value) {
-    form.value = { title: '', description: '', date: today, tags: [] }
+    form.value = { title: '', description: '', date: today, department: '', assigned_user_id: '', tags: [] }
   }
 }
+
+onMounted(async () => {
+  try {
+    const res = await getDepartments()
+    departments.value = res.data
+  } catch {
+    departments.value = []
+  }
+
+  if (isPrivilegedUser.value) {
+    try {
+      const res = await getUsers()
+      usersList.value = res.data.users
+    } catch {
+      usersList.value = []
+    }
+  }
+})
 </script>
 
 <style scoped>
@@ -115,7 +172,8 @@ function handleSubmit() {
 }
 
 .form-group input,
-.form-group textarea {
+.form-group textarea,
+.form-select {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid #cbd5e1;
@@ -123,10 +181,12 @@ function handleSubmit() {
   font-size: 0.9rem;
   outline: none;
   transition: border-color 0.2s;
+  background: white;
 }
 
 .form-group input:focus,
-.form-group textarea:focus {
+.form-group textarea:focus,
+.form-select:focus {
   border-color: #2563eb;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
@@ -137,7 +197,7 @@ function handleSubmit() {
 
 .form-row {
   display: grid;
-  grid-template-columns: 1fr 1.5fr;
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
 

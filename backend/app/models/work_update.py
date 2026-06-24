@@ -22,6 +22,7 @@ class WorkUpdate(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     date: Mapped[date] = mapped_column(Date, nullable=False)
+    department: Mapped[str | None] = mapped_column(String(100), nullable=True)
     tags: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -176,12 +176,15 @@ async def main():
                     ["ui", "ux"], ["integration"], ["testing"],
                     ["planning"], ["standup"], ["research"],
                 ]
+                dept_list = list(depts.keys())
+                random_dept = random.choice(dept_list) if dept_list else None
                 i = random.randrange(len(titles))
                 db.add(WorkUpdate(
                     user_id=user.id,
                     title=titles[i],
                     description=f"Spent the day on {titles[i].lower()}. [Dummy data for testing]",
                     date=d,
+                    department=random_dept,
                     tags=tags_pool[i],
                 ))
         await db.flush()
@@ -273,7 +276,7 @@ async def main():
         print("\nAll dummy data seeded successfully!")
         print("Users & passwords:")
         for ud in users_data:
-            print(f"  {ud['email']} / password123")
+            print(f"  {ud['email']} / 12345678")
 
 
 if __name__ == "__main__":

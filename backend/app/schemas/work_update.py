@@ -10,6 +10,8 @@ class WorkUpdateCreate(BaseModel):
     title: str
     description: str
     date: dt.date
+    department: str | None = None
+    assigned_user_id: uuid.UUID | None = None
     tags: list[str] = []
 
 
@@ -17,6 +19,7 @@ class WorkUpdateUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     date: dt.date | None = None
+    department: str | None = None
     tags: list[str] | None = None
 
 
@@ -26,6 +29,7 @@ class WorkUpdateResponse(BaseModel):
     title: str
     description: str
     date: dt.date
+    department: str | None = None
     tags: list[str]
     created_at: dt.datetime
 

@@ -26,12 +26,17 @@ async def create_work_update(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Create a work update."""
+    """Create a work update. Admin/manager/hr can assign to other users."""
+    target_user_id = current_user.id
+    if data.assigned_user_id and current_user.role in ("admin", "manager", "hr"):
+        target_user_id = data.assigned_user_id
+
     update = WorkUpdate(
-        user_id=current_user.id,
+        user_id=target_user_id,
         title=data.title,
         description=data.description,
         date=data.date,
+        department=data.department,
         tags=data.tags,
     )
     db.add(update)
@@ -64,10 +69,11 @@ async def all_updates(
     user_id: uuid.UUID | None = Query(None),
     year: int | None = Query(None, ge=2020, le=2100),
     month: int | None = Query(None, ge=1, le=12),
+    department: str | None = Query(None, max_length=100),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("admin", "manager", "hr")),
 ):
-    """Get all work updates, optionally filtered by user_id, year, month."""
+    """Get all work updates, optionally filtered by user_id, year, month, department."""
     stmt = select(WorkUpdate).order_by(WorkUpdate.created_at.desc())
     if user_id:
         stmt = stmt.where(WorkUpdate.user_id == user_id)
@@ -75,6 +81,8 @@ async def all_updates(
         stmt = stmt.where(func.extract("year", WorkUpdate.date) == year)
     if month is not None:
         stmt = stmt.where(func.extract("month", WorkUpdate.date) == month)
+    if department:
+        stmt = stmt.where(WorkUpdate.department == department)
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
@@ -104,7 +112,7 @@ async def update_work_update(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Edit own work update."""
+    """Edit own work update. Admin/manager/hr can edit any update."""
     result = await db.execute(
         select(WorkUpdate).where(WorkUpdate.id == update_id)
     )
@@ -113,7 +121,7 @@ async def update_work_update(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Work update not found"
         )
-    if update.user_id != current_user.id:
+    if update.user_id != current_user.id and current_user.role not in ("admin", "manager", "hr"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only edit your own updates",
@@ -134,7 +142,7 @@ async def delete_work_update(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Delete own work update."""
+    """Delete own work update. Admin/manager/hr can delete any update."""
     result = await db.execute(
         select(WorkUpdate).where(WorkUpdate.id == update_id)
     )
@@ -143,7 +151,7 @@ async def delete_work_update(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Work update not found"
         )
-    if update.user_id != current_user.id:
+    if update.user_id != current_user.id and current_user.role not in ("admin", "manager", "hr"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only delete your own updates",

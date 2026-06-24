@@ -22,7 +22,7 @@ export function usePermissions() {
   }
 
   function canManagePolicies() {
-    return ['admin', 'hr'].includes(currentUserRole.value)
+    return ['admin', 'manager', 'hr'].includes(currentUserRole.value)
   }
 
   function canViewAllLeaves() {

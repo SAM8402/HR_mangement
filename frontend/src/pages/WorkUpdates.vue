@@ -19,6 +19,16 @@
             <option value="my">My Updates</option>
             <option value="all">All Updates</option>
           </select>
+
+          <template v-if="viewMode === 'all'">
+            <label class="filter-label">Department:</label>
+            <select v-model="departmentFilter" class="filter-select" @change="applyDepartmentFilter">
+              <option value="">All Departments</option>
+              <option v-for="dept in departments" :key="dept" :value="dept">
+                {{ dept }}
+              </option>
+            </select>
+          </template>
         </div>
       </div>
 
@@ -38,6 +48,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useWorkUpdateStore } from '../stores/workUpdates.js'
 import { useAuthStore } from '../stores/auth.js'
 import { usePermissions } from '../composables/usePermissions.js'
+import { getDepartments } from '../api/departments.js'
 import WorkUpdateForm from '../components/work/WorkUpdateForm.vue'
 import WorkUpdateList from '../components/work/WorkUpdateList.vue'
 
@@ -48,6 +59,8 @@ const permissions = usePermissions()
 const viewMode = ref('my')
 const editingId = ref(null)
 const editingUpdate = ref(null)
+const departmentFilter = ref('')
+const departments = ref([])
 
 const displayedUpdates = computed(() => {
   if (viewMode.value === 'all') {
@@ -73,6 +86,10 @@ async function handleSubmit(data) {
   } else {
     await workUpdateStore.createUpdate(data)
   }
+  // Refresh the currently visible list
+  if (viewMode.value === 'all' && permissions.canViewAllLeaves()) {
+    workUpdateStore.fetchAllUpdates(departmentFilter.value ? { department: departmentFilter.value } : undefined)
+  }
 }
 
 async function handleDelete(id) {
@@ -81,18 +98,30 @@ async function handleDelete(id) {
   }
 }
 
+function applyDepartmentFilter() {
+  const params = departmentFilter.value ? { department: departmentFilter.value } : undefined
+  workUpdateStore.fetchAllUpdates(params)
+}
+
 watch(viewMode, (mode) => {
   if (mode === 'all' && permissions.canViewAllLeaves()) {
-    workUpdateStore.fetchAllUpdates()
+    workUpdateStore.fetchAllUpdates(departmentFilter.value ? { department: departmentFilter.value } : undefined)
   } else {
     workUpdateStore.fetchMyUpdates()
   }
 })
 
-onMounted(() => {
+onMounted(async () => {
   workUpdateStore.fetchMyUpdates()
   if (permissions.canViewAllLeaves()) {
     workUpdateStore.fetchAllUpdates()
+  }
+
+  try {
+    const res = await getDepartments()
+    departments.value = res.data
+  } catch {
+    departments.value = []
   }
 })
 </script>
@@ -140,6 +169,11 @@ onMounted(() => {
   gap: 8px;
   font-size: 0.9rem;
   color: #475569;
+  flex-wrap: wrap;
+}
+
+.filter-label {
+  margin-left: 12px;
 }
 
 .filter-select {
@@ -148,9 +182,11 @@ onMounted(() => {
   border-radius: 6px;
   font-size: 0.9rem;
   outline: none;
+  background: white;
 }
 
 .filter-select:focus {
   border-color: #2563eb;
 }
 </style>
+
