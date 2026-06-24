@@ -1,0 +1,145 @@
+from __future__ import annotations
+
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import and_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.dependencies import get_current_user, require_role
+from app.db.session import get_db
+from app.models.user import User
+from app.models.work_update import WorkUpdate
+from app.schemas.work_update import (
+    WorkUpdateCreate,
+    WorkUpdateResponse,
+    WorkUpdateUpdate,
+)
+from app.services.cache_service import cache_service
+
+router = APIRouter(prefix="/api/work-updates", tags=["work-updates"])
+
+
+@router.post("", response_model=WorkUpdateResponse, status_code=status.HTTP_201_CREATED)
+async def create_work_update(
+    data: WorkUpdateCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create a work update."""
+    update = WorkUpdate(
+        user_id=current_user.id,
+        title=data.title,
+        description=data.description,
+        date=data.date,
+        tags=data.tags,
+    )
+    db.add(update)
+    await db.flush()
+    await db.refresh(update)
+    await cache_service.invalidate_work_updates(str(current_user.id))
+    return update
+
+
+@router.get("/my", response_model=list[WorkUpdateResponse])
+async def my_updates(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get my work updates."""
+    result = await db.execute(
+        select(WorkUpdate)
+        .where(WorkUpdate.user_id == current_user.id)
+        .order_by(WorkUpdate.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+@router.get("/all", response_model=list[WorkUpdateResponse])
+async def all_updates(
+    user_id: uuid.UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "manager", "hr")),
+):
+    """Get all work updates, optionally filtered by user_id."""
+    stmt = select(WorkUpdate).order_by(WorkUpdate.created_at.desc())
+    if user_id:
+        stmt = stmt.where(WorkUpdate.user_id == user_id)
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
+@router.get("/{update_id}", response_model=WorkUpdateResponse)
+async def get_update(
+    update_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get a single work update."""
+    result = await db.execute(
+        select(WorkUpdate).where(WorkUpdate.id == update_id)
+    )
+    update = result.scalar_one_or_none()
+    if not update:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Work update not found"
+        )
+    return update
+
+
+@router.patch("/{update_id}", response_model=WorkUpdateResponse)
+async def update_work_update(
+    update_id: uuid.UUID,
+    data: WorkUpdateUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Edit own work update."""
+    result = await db.execute(
+        select(WorkUpdate).where(WorkUpdate.id == update_id)
+    )
+    update = result.scalar_one_or_none()
+    if not update:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Work update not found"
+        )
+    if update.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only edit your own updates",
+        )
+
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(update, field, value)
+
+    await db.flush()
+    await db.refresh(update)
+    await cache_service.invalidate_work_updates(str(current_user.id))
+    return update
+
+
+@router.delete("/{update_id}")
+async def delete_work_update(
+    update_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete own work update."""
+    result = await db.execute(
+        select(WorkUpdate).where(WorkUpdate.id == update_id)
+    )
+    update = result.scalar_one_or_none()
+    if not update:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Work update not found"
+        )
+    if update.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only delete your own updates",
+        )
+
+    await db.delete(update)
+    await db.flush()
+    await cache_service.invalidate_work_updates(str(current_user.id))
+    return {"message": "Work update deleted"}
