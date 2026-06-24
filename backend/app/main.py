@@ -13,8 +13,8 @@ from app.core.security import hash_password
 from app.db.base import Base
 from app.db.session import async_session, engine
 from app.models import (  # noqa: F401  — ensure all models are registered
-    ChatFeedback, CompanyRole, CompanyRule, Department, LeaveBalance,
-    LeaveRequest, LeaveType, User, WorkUpdate)
+    Attendance, ChatFeedback, CompanyRole, CompanyRule, Department,
+    LeaveBalance, LeaveRequest, LeaveType, User, WorkUpdate)
 from app.services.cache_service import cache_service
 from app.services.memory_service import memory_service
 
@@ -146,8 +146,9 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ── Include routers ──────────────────────────────────────────────────────────
 
 from app.routers import users  # noqa: E402
-from app.routers import auth, chat, leaves, roles, rules, work_updates
+from app.routers import attendance, auth, chat, leaves, roles, rules, work_updates
 
+app.include_router(attendance.router)
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(leaves.router)

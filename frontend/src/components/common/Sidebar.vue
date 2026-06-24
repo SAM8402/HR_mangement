@@ -24,6 +24,7 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '../../stores/auth.js'
 import { usePermissions } from '../../composables/usePermissions.js'
@@ -37,6 +38,7 @@ const permissions = usePermissions()
 
 const menuItems = [
   { path: '/dashboard', label: 'Dashboard', icon: '&#127968;', requiresAuth: true },
+  { path: '/attendance', label: 'Attendance', icon: '&#9201;', requiresAuth: true, managerOrAdminOnly: true },
   { path: '/leave', label: 'Leave', icon: '&#128197;', requiresAuth: true },
   { path: '/work-updates', label: 'Work Updates', icon: '&#128221;', requiresAuth: true },
   { path: '/policies', label: 'Policies', icon: '&#128220;', requiresAuth: true },
@@ -45,11 +47,11 @@ const menuItems = [
   { path: '/evaluation', label: 'Evaluation', icon: '&#128202;', requiresAuth: true, managerOrAdminOnly: true }
 ]
 
-const filteredMenuItems = menuItems.filter(item => {
+const filteredMenuItems = computed(() => menuItems.filter(item => {
   if (item.adminOnly && !permissions.canManageUsers()) return false
-  if (item.managerOrAdminOnly && !['admin', 'manager'].includes(permissions.currentUserRole.value)) return false
+  if (item.managerOrAdminOnly && !['admin', 'manager', 'hr'].includes(permissions.currentUserRole.value)) return false
   return true
-})
+}))
 
 function isActive(path) {
   return route.path === path || route.path.startsWith(path + '/')

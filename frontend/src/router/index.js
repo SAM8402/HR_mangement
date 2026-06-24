@@ -44,6 +44,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/attendance',
+    name: 'Attendance',
+    component: () => import('../pages/EmployeeAttendance.vue'),
+    meta: { requiresAuth: true, requiresManagerOrAdmin: true }
+  },
+  {
     path: '/evaluation',
     name: 'Evaluation',
     component: () => import('../pages/EvalDashboard.vue'),
@@ -92,7 +98,7 @@ router.beforeEach((to, from, next) => {
     } catch {
       user = null
     }
-    if (!user || !['admin', 'manager'].includes(user.role)) {
+    if (!user || !['admin', 'manager', 'hr'].includes(user.role)) {
       next('/dashboard')
     } else {
       next()

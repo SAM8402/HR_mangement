@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as authApi from '../api/auth.js'
+import { useAttendanceStore } from './attendance.js'
 
 export const useAuthStore = defineStore('auth', () => {
-  const user = ref(null)
+  const user = ref(JSON.parse(localStorage.getItem('hr_user')) || null)
   const token = ref(localStorage.getItem('hr_token') || '')
   const refreshTokenValue = ref(localStorage.getItem('hr_refresh_token') || '')
 
@@ -27,6 +28,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     localStorage.removeItem('hr_token')
     localStorage.removeItem('hr_refresh_token')
+    localStorage.removeItem('hr_user')
   }
 
   async function login(email, password) {
@@ -35,6 +37,8 @@ export const useAuthStore = defineStore('auth', () => {
       const data = res.data
       setTokens(data.access_token, data.refresh_token)
       await fetchMe()
+      const attendanceStore = useAttendanceStore()
+      await attendanceStore.markAttendance().catch(e => console.error('Auto-mark attendance failed:', e))
       return { success: true }
     } catch (err) {
       clearTokens()
@@ -49,6 +53,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const res = await authApi.getMe()
       user.value = res.data
+      localStorage.setItem('hr_user', JSON.stringify(res.data))
     } catch {
       clearTokens()
     }

@@ -4,8 +4,8 @@ export function createUpdate(data) {
   return api.post('/work-updates', data)
 }
 
-export function getMyUpdates() {
-  return api.get('/work-updates/my')
+export function getMyUpdates(params = {}) {
+  return api.get('/work-updates/my', { params })
 }
 
 export function getAllUpdates(params) {

@@ -7,6 +7,7 @@ from app.models.leave import LeaveBalance, LeaveRequest, LeaveType
 from app.models.user import User
 from app.models.work_update import WorkUpdate
 from app.models.chat_feedback import ChatFeedback
+from app.models.attendance import Attendance
 
 __all__ = [
     "User",
@@ -18,4 +19,5 @@ __all__ = [
     "CompanyRole",
     "CompanyRule",
     "ChatFeedback",
+    "Attendance",
 ]

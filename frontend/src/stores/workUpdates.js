@@ -6,6 +6,7 @@ export const useWorkUpdateStore = defineStore('workUpdates', () => {
   const myUpdates = ref([])
   const allUpdates = ref([])
   const isLoading = ref(false)
+  const monthlyUpdates = ref([])
 
   async function createUpdate(data) {
     isLoading.value = true
@@ -32,6 +33,17 @@ export const useWorkUpdateStore = defineStore('workUpdates', () => {
       myUpdates.value = []
     } finally {
       isLoading.value = false
+    }
+  }
+
+  async function fetchMonthlyUpdates(year, month) {
+    try {
+      const res = await workApi.getMyUpdates({ year, month })
+      monthlyUpdates.value = res.data
+      return res.data
+    } catch {
+      monthlyUpdates.value = []
+      return null
     }
   }
 
@@ -81,8 +93,10 @@ export const useWorkUpdateStore = defineStore('workUpdates', () => {
     myUpdates,
     allUpdates,
     isLoading,
+    monthlyUpdates,
     createUpdate,
     fetchMyUpdates,
+    fetchMonthlyUpdates,
     fetchAllUpdates,
     updateUpdate,
     deleteUpdate

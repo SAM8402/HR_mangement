@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, require_role
@@ -43,15 +43,19 @@ async def create_work_update(
 
 @router.get("/my", response_model=list[WorkUpdateResponse])
 async def my_updates(
+    year: int | None = Query(None, ge=2020, le=2100),
+    month: int | None = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get my work updates."""
-    result = await db.execute(
-        select(WorkUpdate)
-        .where(WorkUpdate.user_id == current_user.id)
-        .order_by(WorkUpdate.created_at.desc())
-    )
+    """Get my work updates, optionally filtered by year/month."""
+    stmt = select(WorkUpdate).where(WorkUpdate.user_id == current_user.id)
+    if year is not None:
+        stmt = stmt.where(func.extract("year", WorkUpdate.date) == year)
+    if month is not None:
+        stmt = stmt.where(func.extract("month", WorkUpdate.date) == month)
+    stmt = stmt.order_by(WorkUpdate.date.desc())
+    result = await db.execute(stmt)
     return list(result.scalars().all())
 
 
