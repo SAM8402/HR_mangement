@@ -1,36 +1,47 @@
 <template>
-  <div class="chat-page">
-    <div class="chat-header">
-      <h1>AI Assistant</h1>
-      <button class="btn-clear" @click="handleClear">Clear Chat</button>
-    </div>
+  <div class="chat-layout">
+    <ChatHistorySidebar
+      :sessions="chatStore.sessions"
+      :current-id="chatStore.currentSessionId"
+      @select-session="handleSelectSession"
+      @new-session="handleNewSession"
+      @delete-session="handleDeleteSession"
+      @rename-session="handleRenameSession"
+    />
 
-    <div class="chat-container">
-      <ChatWindow :messages="chatStore.messages" :streaming-text="chatStore.streamingText" />
-
-      <div v-if="chatStore.isLoading" class="typing-indicator">
-        <StreamingDot />
+    <div class="chat-page">
+      <div class="chat-header">
+        <h1>AI Assistant</h1>
+        <button class="btn-clear" @click="handleClear">Clear Chat</button>
       </div>
-    </div>
 
-    <div class="chat-input-area">
-      <form @submit.prevent="handleSend" class="input-form">
-        <input
-          v-model="message"
-          type="text"
-          placeholder="Ask me anything about company policies, leave, work updates..."
-          :disabled="chatStore.isLoading"
-          class="chat-input"
-          ref="inputRef"
-        />
-        <button
-          type="submit"
-          class="send-btn"
-          :disabled="!message.trim() || chatStore.isLoading"
-        >
-          &#10148;
-        </button>
-      </form>
+      <div class="chat-container">
+        <ChatWindow :messages="chatStore.messages" :streaming-text="chatStore.streamingText" />
+
+        <div v-if="chatStore.isLoading" class="typing-indicator">
+          <StreamingDot />
+        </div>
+      </div>
+
+      <div class="chat-input-area">
+        <form @submit.prevent="handleSend" class="input-form">
+          <input
+            v-model="message"
+            type="text"
+            placeholder="Ask me anything about company policies, leave, work updates..."
+            :disabled="chatStore.isLoading"
+            class="chat-input"
+            ref="inputRef"
+          />
+          <button
+            type="submit"
+            class="send-btn"
+            :disabled="!message.trim() || chatStore.isLoading"
+          >
+            &#10148;
+          </button>
+        </form>
+      </div>
     </div>
   </div>
 </template>
@@ -40,6 +51,7 @@ import { ref, onMounted } from 'vue'
 import { useChatStore } from '../stores/chat.js'
 import ChatWindow from '../components/chatbot/ChatWindow.vue'
 import StreamingDot from '../components/chatbot/StreamingDot.vue'
+import ChatHistorySidebar from '../components/chatbot/ChatHistorySidebar.vue'
 
 const chatStore = useChatStore()
 const message = ref('')
@@ -48,31 +60,54 @@ const inputRef = ref(null)
 async function handleSend() {
   const text = message.value.trim()
   if (!text || chatStore.isLoading) return
-
   message.value = ''
   await chatStore.sendMessage(text)
   inputRef.value?.focus()
 }
 
 function handleClear() {
-  if (confirm('Clear all chat history?')) {
+  if (confirm('Clear current chat history?')) {
     chatStore.clearHistory()
   }
 }
 
-onMounted(() => {
-  chatStore.fetchHistory()
+async function handleSelectSession(sessionId) {
+  await chatStore.switchSession(sessionId)
+}
+
+async function handleNewSession() {
+  await chatStore.createSession()
+}
+
+function handleDeleteSession(sessionId) {
+  if (confirm('Delete this session?')) {
+    chatStore.deleteSession(sessionId)
+  }
+}
+
+function handleRenameSession(sessionId, title) {
+  chatStore.renameSession(sessionId, title)
+}
+
+onMounted(async () => {
+  await chatStore.refreshSessions()
+  await chatStore.fetchHistory()
   inputRef.value?.focus()
 })
 </script>
 
 <style scoped>
+.chat-layout {
+  display: flex;
+  height: calc(100vh - 104px);
+}
+
 .chat-page {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 104px);
-  max-width: 900px;
-  margin: 0 auto;
+  flex: 1;
+  min-width: 0;
+  padding: 0 24px;
 }
 
 .chat-header {
@@ -80,6 +115,7 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+  padding-top: 0;
 }
 
 .chat-header h1 {
@@ -121,6 +157,7 @@ onMounted(() => {
   border-radius: 12px;
   border: 1px solid #e2e8f0;
   padding: 8px;
+  margin-bottom: 16px;
 }
 
 .input-form {

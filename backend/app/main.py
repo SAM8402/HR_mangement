@@ -24,6 +24,7 @@ from app.models import (  # noqa: F401  — ensure all models are registered
 )
 from app.db.session import async_session
 from app.services.cache_service import cache_service
+from app.services.memory_service import memory_service
 
 
 @asynccontextmanager
@@ -76,13 +77,15 @@ async def lifespan(app: FastAPI):
 
         await db.commit()
 
-    # Connect Redis
+    # Connect Redis & Memory Service
     await cache_service.connect()
+    await memory_service.connect()
 
     yield
 
     # ── Shutdown ──────────────────────────────────────────────────────────
     await cache_service.disconnect()
+    await memory_service.disconnect()
     await engine.dispose()
 
 
