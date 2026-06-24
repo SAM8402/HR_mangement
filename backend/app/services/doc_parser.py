@@ -1,13 +1,12 @@
 from __future__ import annotations
-
-import re
+from io import BytesIO
 
 from docx import Document
 
 
 def parse_docx(file_content: bytes) -> dict:
     """Parse a .docx file and extract structured role information."""
-    doc = Document(file_content)  # type: ignore[arg-type]
+    doc = Document(BytesIO(file_content))
 
     title = ""
     description = ""
@@ -38,9 +37,8 @@ def parse_docx(file_content: bytes) -> dict:
             current_section = "responsibilities"
             continue
 
-        # Detect bullet points for skills
-        if current_section == "skills" and re.match(r"^[\-\*\•]", para):
-            skill_text = re.sub(r"^[\-\*\•\s]+", "", para).strip()
+        if current_section == "skills":
+            skill_text = para.strip()
             if skill_text:
                 skills.append(skill_text)
         elif current_section == "responsibilities":

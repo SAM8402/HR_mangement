@@ -22,11 +22,11 @@
       <div v-if="permissions.canManagePolicies()" class="actions-bar">
         <button class="btn-primary" @click="showRoleForm = true">+ Add Role</button>
         <label class="upload-btn">
-          &#128194; Upload Role Doc (.docx/.pdf)
-          <input type="file" accept=".docx,.pdf" @change="handleDocUpload" hidden />
+          Upload Role Doc (.docx/.pdf)
+          <input type="file" accept=".docx,.pdf" @change="handleRoleDocUpload" hidden />
         </label>
       </div>
- 
+
       <div v-if="showRoleForm" class="form-card">
         <h3>{{ editingRole ? 'Edit Role' : 'Add New Role' }}</h3>
         <form @submit.prevent="handleRoleSubmit">
@@ -49,6 +49,7 @@
         </form>
       </div>
 
+      <h3 class="section-title">Database Records</h3>
       <div class="policy-list">
         <div v-if="roles.length === 0" class="empty-state">No roles defined yet.</div>
         <div v-for="role in roles" :key="role.id" class="policy-item">
@@ -65,6 +66,24 @@
           </div>
         </div>
       </div>
+
+      <h3 class="section-title">File Documents</h3>
+      <div class="file-list">
+        <div v-if="roleDocs.length === 0" class="empty-state">No role documents uploaded.</div>
+        <div v-for="file in roleDocs" :key="file.name" class="file-item">
+          <div class="file-info">
+            <span class="file-icon">&#128196;</span>
+            <div>
+              <strong>{{ file.name }}</strong>
+              <span class="file-meta">{{ (file.size / 1024).toFixed(1) }} KB</span>
+            </div>
+          </div>
+          <div class="file-actions">
+            <button class="btn-icon" @click="downloadDoc('roles', file.name)" title="Download">&#128229;</button>
+            <button v-if="permissions.canManagePolicies()" class="btn-icon danger" @click="handleDeleteRoleDoc(file.name)" title="Delete">&#128465;</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Rules Tab -->
@@ -72,7 +91,7 @@
       <div v-if="permissions.canManagePolicies()" class="actions-bar">
         <button class="btn-primary" @click="showRuleForm = true">+ Add Rule</button>
         <label class="upload-btn">
-          &#128194; Upload Rule PDF/Doc
+          Upload Rule Doc (.docx/.pdf)
           <input type="file" accept=".docx,.pdf" @change="handleRuleDocUpload" hidden />
         </label>
       </div>
@@ -99,6 +118,7 @@
         </form>
       </div>
 
+      <h3 class="section-title">Database Records</h3>
       <div class="policy-list">
         <div v-if="rules.length === 0" class="empty-state">No rules defined yet.</div>
         <div v-for="rule in rules" :key="rule.id" class="policy-item">
@@ -113,14 +133,32 @@
           </div>
         </div>
       </div>
+
+      <h3 class="section-title">File Documents</h3>
+      <div class="file-list">
+        <div v-if="ruleDocs.length === 0" class="empty-state">No rule documents uploaded.</div>
+        <div v-for="file in ruleDocs" :key="file.name" class="file-item">
+          <div class="file-info">
+            <span class="file-icon">&#128196;</span>
+            <div>
+              <strong>{{ file.name }}</strong>
+              <span class="file-meta">{{ (file.size / 1024).toFixed(1) }} KB</span>
+            </div>
+          </div>
+          <div class="file-actions">
+            <button class="btn-icon" @click="downloadDoc('rules', file.name)" title="Download">&#128229;</button>
+            <button v-if="permissions.canManagePolicies()" class="btn-icon danger" @click="handleDeleteRuleDoc(file.name)" title="Delete">&#128465;</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getRoles, createRole, updateRole, deleteRole, uploadDoc } from '../api/roles.js'
-import { getRules, createRule, updateRule, deleteRule, uploadRuleDoc } from '../api/rules.js'
+import { getRoles, createRole, updateRole, deleteRole, uploadDoc, getRoleDocs, uploadRoleDocFile, deleteRoleDoc } from '../api/roles.js'
+import { getRules, createRule, updateRule, deleteRule, uploadRuleDoc, getRuleDocs, uploadRuleDocFile, deleteRuleDoc } from '../api/rules.js'
 import { usePermissions } from '../composables/usePermissions.js'
 
 const permissions = usePermissions()
@@ -128,6 +166,8 @@ const permissions = usePermissions()
 const activeTab = ref('roles')
 const roles = ref([])
 const rules = ref([])
+const roleDocs = ref([])
+const ruleDocs = ref([])
 
 const showRoleForm = ref(false)
 const editingRole = ref(null)
@@ -153,6 +193,29 @@ async function fetchRules() {
   } catch {
     rules.value = []
   }
+}
+
+async function fetchRoleDocs() {
+  try {
+    const res = await getRoleDocs()
+    roleDocs.value = res.data || []
+  } catch {
+    roleDocs.value = []
+  }
+}
+
+async function fetchRuleDocs() {
+  try {
+    const res = await getRuleDocs()
+    ruleDocs.value = res.data || []
+  } catch {
+    ruleDocs.value = []
+  }
+}
+
+function downloadDoc(type, filename) {
+  const baseUrl = import.meta.env.VITE_API_BASE || 'http://localhost:8000/api'
+  window.open(`${baseUrl}/docs/${type}/${encodeURIComponent(filename)}`, '_blank')
 }
 
 function editRole(role) {
@@ -193,22 +256,37 @@ async function handleDeleteRole(id) {
   }
 }
 
-async function handleDocUpload(event) {
+async function handleRoleDocUpload(event) {
   const file = event.target.files[0]
   if (file) {
-    await uploadDoc(file)
-    await fetchRoles()
+    await uploadRoleDocFile(file)
+    event.target.value = ''
+    await Promise.all([fetchRoles(), fetchRoleDocs()])
+  }
+}
+
+async function handleDeleteRoleDoc(filename) {
+  if (confirm(`Delete "${filename}"?`)) {
+    await deleteRoleDoc(filename)
+    await Promise.all([fetchRoles(), fetchRoleDocs()])
   }
 }
 
 async function handleRuleDocUpload(event) {
   const file = event.target.files[0]
   if (file) {
-    await uploadRuleDoc(file)
-    await fetchRules()
+    await uploadRuleDocFile(file)
+    event.target.value = ''
+    await Promise.all([fetchRules(), fetchRuleDocs()])
   }
 }
 
+async function handleDeleteRuleDoc(filename) {
+  if (confirm(`Delete "${filename}"?`)) {
+    await deleteRuleDoc(filename)
+    await Promise.all([fetchRules(), fetchRuleDocs()])
+  }
+}
 
 function editRule(rule) {
   editingRule.value = rule.id
@@ -244,8 +322,7 @@ async function handleDeleteRule(id) {
 }
 
 onMounted(() => {
-  fetchRoles()
-  fetchRules()
+  Promise.all([fetchRoles(), fetchRules(), fetchRoleDocs(), fetchRuleDocs()])
 })
 </script>
 
@@ -371,7 +448,16 @@ onMounted(() => {
 
 .btn-secondary:hover { background: #e2e8f0; }
 
-.policy-list {
+.section-title {
+  font-size: 1rem;
+  color: #334155;
+  margin: 20px 0 12px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.policy-list,
+.file-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -423,6 +509,37 @@ onMounted(() => {
 }
 
 .policy-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.file-item {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.file-icon {
+  font-size: 1.3rem;
+}
+
+.file-meta {
+  display: block;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.file-actions {
   display: flex;
   gap: 4px;
 }

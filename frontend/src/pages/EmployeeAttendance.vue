@@ -187,7 +187,7 @@ async function markToday() {
 async function loadMonth() {
   await Promise.all([
     attStore.fetchMonthlyReport(year.value, month.value),
-    workStore.fetchMonthlyUpdates(year.value, month.value),
+    workStore.fetchMonthlyUpdates(year.value, month.value, selectedUserId.value),
     attStore.fetchTodayStatus(),
   ])
 }

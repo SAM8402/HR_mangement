@@ -62,13 +62,19 @@ async def my_updates(
 @router.get("/all", response_model=list[WorkUpdateResponse])
 async def all_updates(
     user_id: uuid.UUID | None = Query(None),
+    year: int | None = Query(None, ge=2020, le=2100),
+    month: int | None = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("admin", "manager", "hr")),
 ):
-    """Get all work updates, optionally filtered by user_id."""
+    """Get all work updates, optionally filtered by user_id, year, month."""
     stmt = select(WorkUpdate).order_by(WorkUpdate.created_at.desc())
     if user_id:
         stmt = stmt.where(WorkUpdate.user_id == user_id)
+    if year is not None:
+        stmt = stmt.where(func.extract("year", WorkUpdate.date) == year)
+    if month is not None:
+        stmt = stmt.where(func.extract("month", WorkUpdate.date) == month)
     result = await db.execute(stmt)
     return list(result.scalars().all())
 

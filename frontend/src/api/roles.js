@@ -23,3 +23,23 @@ export function uploadDoc(file) {
     headers: { 'Content-Type': 'multipart/form-data' }
   })
 }
+
+export function getRoleDocs() {
+  return api.get('/docs/roles')
+}
+
+export function getRoleDoc(filename) {
+  return api.get(`/docs/roles/${encodeURIComponent(filename)}`, { responseType: 'blob' })
+}
+
+export function uploadRoleDocFile(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post('/docs/roles/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+
+export function deleteRoleDoc(filename) {
+  return api.delete(`/docs/roles/${encodeURIComponent(filename)}`)
+}

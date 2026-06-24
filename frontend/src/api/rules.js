@@ -23,3 +23,23 @@ export function uploadRuleDoc(file) {
     headers: { 'Content-Type': 'multipart/form-data' }
   })
 }
+
+export function getRuleDocs() {
+  return api.get('/docs/rules')
+}
+
+export function getRuleDoc(filename) {
+  return api.get(`/docs/rules/${encodeURIComponent(filename)}`, { responseType: 'blob' })
+}
+
+export function uploadRuleDocFile(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post('/docs/rules/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+
+export function deleteRuleDoc(filename) {
+  return api.delete(`/docs/rules/${encodeURIComponent(filename)}`)
+}

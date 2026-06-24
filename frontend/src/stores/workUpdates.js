@@ -36,9 +36,14 @@ export const useWorkUpdateStore = defineStore('workUpdates', () => {
     }
   }
 
-  async function fetchMonthlyUpdates(year, month) {
+  async function fetchMonthlyUpdates(year, month, userId) {
     try {
-      const res = await workApi.getMyUpdates({ year, month })
+      let res
+      if (userId) {
+        res = await workApi.getAllUpdates({ user_id: userId, year, month })
+      } else {
+        res = await workApi.getMyUpdates({ year, month })
+      }
       monthlyUpdates.value = res.data
       return res.data
     } catch {

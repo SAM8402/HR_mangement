@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
 import os
 
 from langchain_chroma import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 from app.core.config import settings
+
+
+logger = logging.getLogger(__name__)
 
 _embedding_model: GoogleGenerativeAIEmbeddings | None = None
 _embedding_key: str | None = None
@@ -66,6 +70,7 @@ async def embed_document(text: str, metadata: dict) -> None:
 
     chunks = chunk_text(text)
     if not chunks:
+        logger.warning("embed_document: no chunks generated for text length %d, metadata=%s", len(text), metadata.get("title"))
         return
 
     doc_id = metadata.get("id")
@@ -80,16 +85,18 @@ async def embed_document(text: str, metadata: dict) -> None:
                 texts=chunks,
                 metadatas=[metadata.copy() for _ in chunks],
             )
+            logger.info("embed_document: embedded %d chunks for '%s' (id=%s)", len(chunks), metadata.get("title"), doc_id)
             break
-        except Exception:
+        except Exception as e:
+            logger.error("embed_document: attempt %d failed for '%s': %s", attempt + 1, metadata.get("title"), e)
             if attempt < len(keys) - 1:
                 _rotate_embedding_key()
             else:
                 raise
     try:
         await cache_service.invalidate_rag_cache()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("embed_document: cache invalidation failed: %s", e)
 
 
 
@@ -161,7 +168,7 @@ async def hybrid_search(query: str, k: int = 5) -> list[dict]:
         if v_id and v_id not in active_ids:
             continue
         # Apply similarity threshold check (AURA's threshold is 0.35)
-        if vr.get("score", 0.0) < 0.35:
+        if vr.get("score", 0.0) < 0.15:
             continue
         filtered_vector_results.append(vr)
 

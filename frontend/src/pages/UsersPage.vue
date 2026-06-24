@@ -145,7 +145,7 @@ async function fetchUsers() {
   loading.value = true
   try {
     const res = await getUsers()
-    users.value = res.data || []
+    users.value = res.data?.users || []
   } catch {
     users.value = []
   } finally {

@@ -9,7 +9,7 @@ export function getMyUpdates(params = {}) {
 }
 
 export function getAllUpdates(params) {
-  return api.get('/work-updates', { params })
+  return api.get('/work-updates/all', { params })
 }
 
 export function getUpdate(id) {
@@ -17,7 +17,7 @@ export function getUpdate(id) {
 }
 
 export function updateUpdate(id, data) {
-  return api.put(`/work-updates/${id}`, data)
+  return api.patch(`/work-updates/${id}`, data)
 }
 
 export function deleteUpdate(id) {
