@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 
 
 class UserCreate(BaseModel):
@@ -42,6 +42,13 @@ class UserResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("department", mode="before")
+    @classmethod
+    def coerce_department(cls, v):
+        if v is not None and not isinstance(v, str):
+            return v.name
+        return v
 
 
 class UserListResponse(BaseModel):
