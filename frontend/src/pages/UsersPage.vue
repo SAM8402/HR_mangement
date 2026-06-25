@@ -25,6 +25,7 @@
       <table class="data-table">
         <thead>
           <tr>
+            <th></th>
             <th>Name</th>
             <th>Email</th>
             <th>Role</th>
@@ -35,12 +36,16 @@
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="6" class="loading-cell">Loading users...</td>
+            <td colspan="7" class="loading-cell">Loading users...</td>
           </tr>
           <tr v-else-if="filteredUsers.length === 0">
-            <td colspan="6" class="empty-cell">No users found.</td>
+            <td colspan="7" class="empty-cell">No users found.</td>
           </tr>
           <tr v-for="user in filteredUsers" :key="user.id">
+            <td>
+              <img v-if="user.profile_image" :src="user.profile_image" class="table-avatar" />
+              <div v-else class="table-avatar-placeholder">{{ user.name?.charAt(0) }}</div>
+            </td>
             <td>{{ user.name }}</td>
             <td>{{ user.email }}</td>
             <td>
@@ -98,6 +103,14 @@
           <label>Phone</label>
           <input v-model="userForm.phone" type="text" placeholder="+1 234 567 890" />
         </div>
+        <div v-if="editingUserId" class="form-group">
+          <label>Profile Image</label>
+          <div class="image-upload-row">
+            <img v-if="previewImage" :src="previewImage" class="upload-preview" />
+            <div v-else class="upload-preview-placeholder">No image</div>
+            <input type="file" accept="image/*" @change="onImageSelect" />
+          </div>
+        </div>
         <div class="modal-actions">
           <button type="button" class="btn-secondary" @click="showModal = false">Cancel</button>
           <button type="submit" class="btn-primary" :disabled="saving">
@@ -111,7 +124,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { getUsers, createUser, updateUser, deleteUser } from '../api/users.js'
+import { getUsers, createUser, updateUser, updateProfileImage } from '../api/users.js'
 import Modal from '../components/common/Modal.vue'
 
 const users = ref([])
@@ -121,6 +134,8 @@ const showModal = ref(false)
 const editingUserId = ref(null)
 const searchQuery = ref('')
 const filterRole = ref('')
+const selectedImageFile = ref(null)
+const previewImage = ref('')
 
 const userForm = ref({
   name: '',
@@ -155,12 +170,16 @@ async function fetchUsers() {
 
 function openAddModal() {
   editingUserId.value = null
+  selectedImageFile.value = null
+  previewImage.value = ''
   userForm.value = { name: '', email: '', password: '', role: 'employee', department: '', phone: '' }
   showModal.value = true
 }
 
 function openEditModal(user) {
   editingUserId.value = user.id
+  selectedImageFile.value = null
+  previewImage.value = user.profile_image || ''
   userForm.value = {
     name: user.name,
     email: user.email,
@@ -172,6 +191,19 @@ function openEditModal(user) {
   showModal.value = true
 }
 
+function onImageSelect(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  if (file.size > 2 * 1024 * 1024) {
+    alert('Image must be under 2MB')
+    return
+  }
+  selectedImageFile.value = file
+  const reader = new FileReader()
+  reader.onload = () => { previewImage.value = reader.result }
+  reader.readAsDataURL(file)
+}
+
 async function handleSaveUser() {
   saving.value = true
   try {
@@ -179,6 +211,9 @@ async function handleSaveUser() {
     if (editingUserId.value) {
       if (!data.password) delete data.password
       await updateUser(editingUserId.value, data)
+      if (selectedImageFile.value && previewImage.value) {
+        await updateProfileImage(editingUserId.value, { profile_image: previewImage.value })
+      }
     } else {
       await createUser(data)
     }
@@ -289,6 +324,7 @@ onMounted(fetchUsers)
   font-size: 0.9rem;
   color: #334155;
   border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
 }
 
 .data-table tr:last-child td {
@@ -304,6 +340,26 @@ onMounted(fetchUsers)
   text-align: center;
   color: #64748b;
   padding: 40px 16px !important;
+}
+
+.table-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.table-avatar-placeholder {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .role-badge {
@@ -382,6 +438,33 @@ onMounted(fetchUsers)
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+}
+
+.image-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.upload-preview {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #e2e8f0;
+}
+
+.upload-preview-placeholder {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  border: 2px dashed #cbd5e1;
 }
 
 .modal-actions {

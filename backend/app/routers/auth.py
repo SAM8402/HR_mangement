@@ -12,7 +12,8 @@ from app.core.security import (
 )
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.auth import LoginRequest, MeResponse, TokenResponse, RefreshTokenRequest
+from app.schemas.auth import ChangePasswordRequest, LoginRequest, MeResponse, TokenResponse, RefreshTokenRequest
+from app.core.security import hash_password
 from app.services.cache_service import cache_service
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -118,6 +119,24 @@ async def refresh_token(
         access_token=new_access,
         refresh_token=new_refresh,
     )
+
+
+@router.post("/change-password")
+async def change_password(
+    data: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Change current user's password after verifying old password."""
+    if not verify_password(data.old_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect",
+        )
+
+    current_user.password_hash = hash_password(data.new_password)
+    await db.commit()
+    return {"message": "Password updated successfully"}
 
 
 @router.get("/me", response_model=MeResponse)

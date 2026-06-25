@@ -22,6 +22,11 @@ class UserUpdate(BaseModel):
     department_id: uuid.UUID | None = None
     joining_date: date | None = None
     is_active: bool | None = None
+    profile_image: str | None = None
+
+
+class UserProfileImageUpdate(BaseModel):
+    profile_image: str
 
 
 class UserResponse(BaseModel):
@@ -30,8 +35,10 @@ class UserResponse(BaseModel):
     email: str
     role: str
     department_id: uuid.UUID | None
+    department: str | None = None
     joining_date: date
     is_active: bool
+    profile_image: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

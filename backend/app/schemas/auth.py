@@ -22,8 +22,15 @@ class MeResponse(BaseModel):
     email: str
     role: str
     department_id: uuid.UUID | None
+    department: str | None = None
+    profile_image: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
 
 
 class RefreshTokenRequest(BaseModel):

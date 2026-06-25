@@ -12,7 +12,7 @@ from app.core.security import hash_password
 from app.db.session import get_db
 from app.models.leave import LeaveBalance, LeaveType
 from app.models.user import User
-from app.schemas.user import UserCreate, UserListResponse, UserResponse, UserUpdate
+from app.schemas.user import UserCreate, UserListResponse, UserProfileImageUpdate, UserResponse, UserUpdate
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -131,6 +131,33 @@ async def update_user(
     for field, value in update_data.items():
         setattr(user, field, value)
 
+    await db.flush()
+    await db.refresh(user)
+    return user
+
+
+@router.patch("/{user_id}/profile-image", response_model=UserResponse)
+async def update_profile_image(
+    user_id: uuid.UUID,
+    data: UserProfileImageUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update a user's profile image (base64). Users can update their own, admins can update any."""
+    if current_user.id != user_id and current_user.role not in ("admin", "manager", "hr"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this user's profile image",
+        )
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
+    user.profile_image = data.profile_image
     await db.flush()
     await db.refresh(user)
     return user

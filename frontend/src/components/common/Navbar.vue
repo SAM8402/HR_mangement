@@ -5,10 +5,14 @@
       <span class="app-name">HR System</span>
     </div>
     <div class="navbar-right">
-      <span class="user-info">
-        <span class="user-name">{{ authStore.user?.name || 'User' }}</span>
-        <span class="user-role">{{ authStore.userRole }}</span>
-      </span>
+      <div class="user-profile" @click="goToProfile">
+        <img v-if="authStore.user?.profile_image" :src="authStore.user.profile_image" class="avatar" />
+        <div v-else class="avatar-placeholder">{{ authStore.user?.name?.charAt(0) || 'U' }}</div>
+        <div class="user-info">
+          <span class="user-name">{{ authStore.user?.name || 'User' }}</span>
+          <span class="user-role">{{ authStore.userRole }}</span>
+        </div>
+      </div>
       <button class="logout-btn" @click="handleLogout">Logout</button>
     </div>
   </nav>
@@ -22,6 +26,10 @@ defineEmits(['toggle-sidebar'])
 
 const router = useRouter()
 const authStore = useAuthStore()
+
+function goToProfile() {
+  router.push('/profile')
+}
 
 async function handleLogout() {
   await authStore.logout()
@@ -74,6 +82,40 @@ async function handleLogout() {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+.user-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.user-profile:hover {
+  background: #f1f5f9;
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.avatar-placeholder {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .user-info {

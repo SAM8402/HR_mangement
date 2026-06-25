@@ -13,9 +13,13 @@ export function createUser(data) {
 }
 
 export function updateUser(id, data) {
-  return api.put(`/users/${id}`, data)
+  return api.patch(`/users/${id}`, data)
 }
 
 export function deleteUser(id) {
   return api.delete(`/users/${id}`)
+}
+
+export function updateProfileImage(id, data) {
+  return api.patch(`/users/${id}/profile-image`, data)
 }
