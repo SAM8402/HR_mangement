@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 
 
 class LoginRequest(BaseModel):
@@ -26,6 +26,13 @@ class MeResponse(BaseModel):
     profile_image: str | None = None
 
     model_config = {"from_attributes": True}
+
+    @field_validator("department", mode="before")
+    @classmethod
+    def coerce_department(cls, v):
+        if v is not None and not isinstance(v, str):
+            return v.name
+        return v
 
 
 class ChangePasswordRequest(BaseModel):
