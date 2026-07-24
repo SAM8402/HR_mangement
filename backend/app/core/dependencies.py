@@ -72,6 +72,7 @@ async def get_current_user(
 
 def require_role(*allowed_roles: str) -> Callable:
     """Create a dependency that restricts access to specific user roles."""
+
     async def role_checker(
         current_user: User = Depends(get_current_user),
     ) -> User:

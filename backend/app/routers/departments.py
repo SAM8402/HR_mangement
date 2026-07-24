@@ -1,3 +1,8 @@
+"""Department listing route.
+
+Provides a single endpoint for retrieving all department names.
+"""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends

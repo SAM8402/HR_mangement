@@ -1,3 +1,9 @@
+"""Authentication routes.
+
+Provides endpoints for login, logout, token refresh, password change,
+and current-user profile retrieval.
+"""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,12 +14,18 @@ from app.core.dependencies import get_current_user
 from app.core.security import (
     create_access_token,
     create_refresh_token,
+    hash_password,
     verify_password,
 )
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.auth import ChangePasswordRequest, LoginRequest, MeResponse, TokenResponse, RefreshTokenRequest
-from app.core.security import hash_password
+from app.schemas.auth import (
+    ChangePasswordRequest,
+    LoginRequest,
+    MeResponse,
+    RefreshTokenRequest,
+    TokenResponse,
+)
 from app.services.cache_service import cache_service
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -42,9 +54,7 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     refresh_token = create_refresh_token(token_data)
 
     # Store refresh token in Redis
-    await cache_service.set(
-        f"refresh_token:{user.id}", refresh_token, ttl=86400 * 7
-    )
+    await cache_service.set(f"refresh_token:{user.id}", refresh_token, ttl=86400 * 7)
 
     return TokenResponse(
         access_token=access_token,
@@ -111,9 +121,7 @@ async def refresh_token(
     new_access = create_access_token(token_data)
     new_refresh = create_refresh_token(token_data)
 
-    await cache_service.set(
-        f"refresh_token:{user.id}", new_refresh, ttl=86400 * 7
-    )
+    await cache_service.set(f"refresh_token:{user.id}", new_refresh, ttl=86400 * 7)
 
     return TokenResponse(
         access_token=new_access,

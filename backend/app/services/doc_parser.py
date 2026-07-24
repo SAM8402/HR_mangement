@@ -1,4 +1,11 @@
+"""Local DOCX parser for role descriptions.
+
+Parses a .docx file locally (no LLM) by scanning paragraph headers
+to extract title, description, responsibilities, and skills sections.
+"""
+
 from __future__ import annotations
+
 from io import BytesIO
 
 from docx import Document
@@ -26,7 +33,12 @@ def parse_docx(file_content: bytes) -> dict:
     }
 
     skill_keywords = {"skills", "required skills", "requirements", "qualifications"}
-    resp_keywords = {"responsibilities", "duties", "key responsibilities", "what you'll do"}
+    resp_keywords = {
+        "responsibilities",
+        "duties",
+        "key responsibilities",
+        "what you'll do",
+    }
 
     for para in paragraphs[1:]:
         lower = para.lower().rstrip(":")

@@ -1,3 +1,9 @@
+"""Leave management routes.
+
+Provides endpoints for applying, approving, rejecting, cancelling
+leave requests, and querying leave balances.
+"""
+
 from __future__ import annotations
 
 import uuid
@@ -8,9 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_current_user, require_role
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.leave import (LeaveActionRequest, LeaveApplyRequest,
-                               LeaveBalanceResponse, LeaveResponse,
-                               LeaveTypeResponse, LeaveTypeUpdateRequest)
+from app.schemas.leave import (
+    LeaveActionRequest,
+    LeaveApplyRequest,
+    LeaveBalanceResponse,
+    LeaveResponse,
+    LeaveTypeResponse,
+    LeaveTypeUpdateRequest,
+)
 from app.services.cache_service import cache_service
 from app.services.leave_service import LeaveService
 

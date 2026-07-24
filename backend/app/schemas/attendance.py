@@ -1,3 +1,9 @@
+"""Attendance request/response schemas.
+
+Defines Pydantic models for marking attendance, status queries,
+and report generation.
+"""
+
 from __future__ import annotations
 
 import uuid

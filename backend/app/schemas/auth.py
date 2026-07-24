@@ -1,3 +1,9 @@
+"""Authentication request/response schemas.
+
+Defines Pydantic models for login, token exchange, password change,
+and current-user profile responses.
+"""
+
 from __future__ import annotations
 
 import uuid

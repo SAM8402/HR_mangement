@@ -11,6 +11,8 @@ from app.db.base import Base
 
 
 class CompanyRule(Base):
+    """Company policy or guideline with title, content, and category."""
+
     __tablename__ = "company_rules"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -18,9 +20,7 @@ class CompanyRule(Base):
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    category: Mapped[str] = mapped_column(
-        String(50), nullable=False, default="general"
-    )
+    category: Mapped[str] = mapped_column(String(50), nullable=False, default="general")
     created_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )

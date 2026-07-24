@@ -1,3 +1,9 @@
+"""Work update routes.
+
+Provides endpoints for creating, listing, editing, and deleting
+daily work logs with optional filters for date, department, and user.
+"""
+
 from __future__ import annotations
 
 import uuid
@@ -94,9 +100,7 @@ async def get_update(
     current_user: User = Depends(get_current_user),
 ):
     """Get a single work update."""
-    result = await db.execute(
-        select(WorkUpdate).where(WorkUpdate.id == update_id)
-    )
+    result = await db.execute(select(WorkUpdate).where(WorkUpdate.id == update_id))
     update = result.scalar_one_or_none()
     if not update:
         raise HTTPException(
@@ -113,15 +117,17 @@ async def update_work_update(
     current_user: User = Depends(get_current_user),
 ):
     """Edit own work update. Admin/manager/hr can edit any update."""
-    result = await db.execute(
-        select(WorkUpdate).where(WorkUpdate.id == update_id)
-    )
+    result = await db.execute(select(WorkUpdate).where(WorkUpdate.id == update_id))
     update = result.scalar_one_or_none()
     if not update:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Work update not found"
         )
-    if update.user_id != current_user.id and current_user.role not in ("admin", "manager", "hr"):
+    if update.user_id != current_user.id and current_user.role not in (
+        "admin",
+        "manager",
+        "hr",
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only edit your own updates",
@@ -143,15 +149,17 @@ async def delete_work_update(
     current_user: User = Depends(get_current_user),
 ):
     """Delete own work update. Admin/manager/hr can delete any update."""
-    result = await db.execute(
-        select(WorkUpdate).where(WorkUpdate.id == update_id)
-    )
+    result = await db.execute(select(WorkUpdate).where(WorkUpdate.id == update_id))
     update = result.scalar_one_or_none()
     if not update:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Work update not found"
         )
-    if update.user_id != current_user.id and current_user.role not in ("admin", "manager", "hr"):
+    if update.user_id != current_user.id and current_user.role not in (
+        "admin",
+        "manager",
+        "hr",
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only delete your own updates",

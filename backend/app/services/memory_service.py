@@ -1,3 +1,10 @@
+"""Multi-tier memory system for the AI assistant.
+
+Provides 10 Redis-backed memory layers covering session, working,
+long-term, episodic, semantic, procedural, state, execution,
+knowledge (RAG), and retrieval (hybrid search) memory.
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -8,27 +15,43 @@ from datetime import datetime, timezone
 from typing import Any
 
 import redis.asyncio as aioredis
+from sqlalchemy import desc, select
 
 from app.core.config import settings
 from app.db.session import async_session
-from app.models.chat_session import ChatSession, ChatMessage
-from sqlalchemy import select, desc
+from app.models.chat_session import ChatMessage, ChatSession
 
 
 class MemoryService:
+    """Multi-tier memory system for the AI assistant.
+
+    Provides 10 memory layers:
+    - Session Memory: active conversation sessions
+    - Working Memory: current conversation context (messages)
+    - Long-term Memory: persistent user facts and preferences
+    - Episodic Memory: past interaction summaries
+    - Semantic Memory: learned facts about the user
+    - Procedural Memory: cached tool call patterns
+    - State Memory: persisted agent state machine state
+    - Execution Memory: tool call trace records
+    - Knowledge Memory (RAG): ChromaDB-adjacent cache layer
+    - Retrieval Cache: hybrid search result caching
+    """
+
     def __init__(self) -> None:
         self._redis: aioredis.Redis | None = None
 
     async def connect(self) -> None:
-        self._redis = aioredis.from_url(
-            settings.REDIS_URL, decode_responses=True
-        )
+        """Open a Redis connection using the configured REDIS_URL."""
+        self._redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
 
     async def disconnect(self) -> None:
+        """Close the Redis connection gracefully."""
         if self._redis:
             await self._redis.close()
 
     async def _ensure_redis(self) -> aioredis.Redis:
+        """Lazy-init Redis if not already connected, then return the client."""
         if not self._redis:
             await self.connect()
         return self._redis
@@ -38,6 +61,7 @@ class MemoryService:
     # ────────────────────────────────────────────────────────────────────
 
     async def list_sessions(self, user_id: str) -> list[dict]:
+        """Return all ChatSession metadata (id, title, timestamps, message count) for a user."""
         try:
             user_uuid = uuid.UUID(str(user_id))
         except ValueError:
@@ -61,6 +85,7 @@ class MemoryService:
             ]
 
     async def create_session(self, user_id: str, title: str = "New Chat") -> str:
+        """Create a new ChatSession and return its UUID string."""
         try:
             user_uuid = uuid.UUID(str(user_id))
         except ValueError:
@@ -76,6 +101,7 @@ class MemoryService:
             return str(session.id)
 
     async def delete_session(self, user_id: str, session_id: str) -> None:
+        """Delete a ChatSession (and its cascade messages) by session_id."""
         try:
             session_uuid = uuid.UUID(str(session_id))
         except ValueError:
@@ -90,6 +116,7 @@ class MemoryService:
                 await db.commit()
 
     async def rename_session(self, user_id: str, session_id: str, title: str) -> None:
+        """Update the title of an existing ChatSession."""
         try:
             session_uuid = uuid.UUID(str(session_id))
         except ValueError:
@@ -105,6 +132,7 @@ class MemoryService:
                 await db.commit()
 
     async def touch_session(self, user_id: str, session_id: str) -> None:
+        """Bump the updated_at timestamp of a session (used to keep it from expiring)."""
         try:
             session_uuid = uuid.UUID(str(session_id))
         except ValueError:
@@ -122,7 +150,10 @@ class MemoryService:
     # 2. Working Memory — current conversation context (messages)
     # ────────────────────────────────────────────────────────────────────
 
-    async def get_history(self, user_id: str, session_id: str, limit: int = 50) -> list[dict]:
+    async def get_history(
+        self, user_id: str, session_id: str, limit: int = 50
+    ) -> list[dict]:
+        """Return the last N ChatMessage entries for a session, oldest first."""
         try:
             session_uuid = uuid.UUID(str(session_id))
         except ValueError:
@@ -147,6 +178,7 @@ class MemoryService:
             ]
 
     async def append_history(self, user_id: str, session_id: str, entry: dict) -> None:
+        """Persist a new message (role, content, citations) to a session."""
         try:
             session_uuid = uuid.UUID(str(session_id))
         except ValueError:
@@ -167,12 +199,16 @@ class MemoryService:
                 session.updated_at = datetime.now(timezone.utc)
             await db.commit()
 
-    async def set_working_context(self, user_id: str, session_id: str, context: dict) -> None:
+    async def set_working_context(
+        self, user_id: str, session_id: str, context: dict
+    ) -> None:
+        """Store ephemeral working context in Redis (TTL: 2 hours)."""
         r = await self._ensure_redis()
         key = f"working:{user_id}:{session_id}"
         await r.set(key, json.dumps(context, default=str), ex=7200)
 
     async def get_working_context(self, user_id: str, session_id: str) -> dict | None:
+        """Retrieve ephemeral working context for a conversation."""
         r = await self._ensure_redis()
         key = f"working:{user_id}:{session_id}"
         raw = await r.get(key)
@@ -187,13 +223,17 @@ class MemoryService:
     # 3. Long-term Memory — persistent user facts, preferences
     # ────────────────────────────────────────────────────────────────────
 
-    async def set_long_term(self, user_id: str, key: str, value: Any, ttl: int = 2592000) -> None:
+    async def set_long_term(
+        self, user_id: str, key: str, value: Any, ttl: int = 2592000
+    ) -> None:
+        """Store a persistent user fact with index tracking (default TTL: 30 days)."""
         r = await self._ensure_redis()
         mem_key = f"ltm:{user_id}:{key}"
         await r.set(mem_key, json.dumps(value, default=str), ex=ttl)
         await r.sadd(f"ltm:{user_id}:index", key)
 
     async def get_long_term(self, user_id: str, key: str) -> Any | None:
+        """Retrieve a persistent user fact by key."""
         r = await self._ensure_redis()
         raw = await r.get(f"ltm:{user_id}:{key}")
         if raw:
@@ -204,6 +244,7 @@ class MemoryService:
         return None
 
     async def get_all_long_term(self, user_id: str) -> dict[str, Any]:
+        """Return every stored long-term fact for a user."""
         r = await self._ensure_redis()
         keys = await r.smembers(f"ltm:{user_id}:index")
         result = {}
@@ -214,6 +255,7 @@ class MemoryService:
         return result
 
     async def delete_long_term(self, user_id: str, key: str) -> None:
+        """Remove a specific long-term fact and its index entry."""
         r = await self._ensure_redis()
         await r.delete(f"ltm:{user_id}:{key}")
         await r.srem(f"ltm:{user_id}:index", key)
@@ -222,7 +264,10 @@ class MemoryService:
     # 4. Episodic Memory — past interaction summaries
     # ────────────────────────────────────────────────────────────────────
 
-    async def store_episode(self, user_id: str, summary: str, session_id: str, metadata: dict | None = None) -> str:
+    async def store_episode(
+        self, user_id: str, summary: str, session_id: str, metadata: dict | None = None
+    ) -> str:
+        """Save an episodic memory with auto-generated ID. Keeps only the 50 most recent episodes."""
         r = await self._ensure_redis()
         episode_id = str(uuid.uuid4())
         now = time.time()
@@ -243,6 +288,7 @@ class MemoryService:
         return episode_id
 
     async def get_recent_episodes(self, user_id: str, limit: int = 10) -> list[dict]:
+        """Return the N most recent episodic memories for a user."""
         r = await self._ensure_redis()
         ids = await r.zrevrange(f"episodic:{user_id}:index", 0, limit - 1)
         episodes = []
@@ -260,6 +306,7 @@ class MemoryService:
     # ────────────────────────────────────────────────────────────────────
 
     async def store_fact(self, user_id: str, fact_key: str, fact_value: Any) -> None:
+        """Store or update a semantic fact. Increments confidence on each update (capped at 1.0)."""
         r = await self._ensure_redis()
         key = f"semantic:{user_id}:{fact_key}"
         existing = await r.get(key)
@@ -271,12 +318,15 @@ class MemoryService:
         else:
             existing_data = {"value": None, "confidence": 0.0}
         existing_data["value"] = fact_value
-        existing_data["confidence"] = min(existing_data.get("confidence", 0.0) + 0.2, 1.0)
+        existing_data["confidence"] = min(
+            existing_data.get("confidence", 0.0) + 0.2, 1.0
+        )
         existing_data["updated_at"] = datetime.now(timezone.utc).isoformat()
         await r.set(key, json.dumps(existing_data, default=str), ex=2592000)
         await r.sadd(f"semantic:{user_id}:index", fact_key)
 
     async def get_fact(self, user_id: str, fact_key: str) -> Any | None:
+        """Retrieve the value of a stored semantic fact."""
         r = await self._ensure_redis()
         raw = await r.get(f"semantic:{user_id}:{fact_key}")
         if raw:
@@ -288,6 +338,7 @@ class MemoryService:
         return None
 
     async def get_all_facts(self, user_id: str) -> dict[str, Any]:
+        """Return every stored semantic fact for a user."""
         r = await self._ensure_redis()
         keys = await r.smembers(f"semantic:{user_id}:index")
         result = {}
@@ -301,11 +352,15 @@ class MemoryService:
     # 6. Procedural Memory — cached tool call patterns / system prompts
     # ────────────────────────────────────────────────────────────────────
 
-    async def store_procedure(self, domain: str, procedure: dict, ttl: int = 86400) -> None:
+    async def store_procedure(
+        self, domain: str, procedure: dict, ttl: int = 86400
+    ) -> None:
+        """Cache a tool-call pattern / system prompt by domain (default TTL: 1 day)."""
         r = await self._ensure_redis()
         await r.set(f"procedural:{domain}", json.dumps(procedure, default=str), ex=ttl)
 
     async def get_procedure(self, domain: str) -> dict | None:
+        """Retrieve a cached procedure by domain name."""
         r = await self._ensure_redis()
         raw = await r.get(f"procedural:{domain}")
         if raw:
@@ -319,12 +374,16 @@ class MemoryService:
     # 7. State Memory — persisted agent state machine state
     # ────────────────────────────────────────────────────────────────────
 
-    async def save_agent_state(self, user_id: str, session_id: str, state: dict) -> None:
+    async def save_agent_state(
+        self, user_id: str, session_id: str, state: dict
+    ) -> None:
+        """Persist the agent state machine's current state (TTL: 2 hours)."""
         r = await self._ensure_redis()
         key = f"agent_state:{user_id}:{session_id}"
         await r.set(key, json.dumps(state, default=str), ex=7200)
 
     async def load_agent_state(self, user_id: str, session_id: str) -> dict | None:
+        """Restore a previously saved agent state."""
         r = await self._ensure_redis()
         raw = await r.get(f"agent_state:{user_id}:{session_id}")
         if raw:
@@ -335,6 +394,7 @@ class MemoryService:
         return None
 
     async def clear_agent_state(self, user_id: str, session_id: str) -> None:
+        """Remove a persisted agent state from Redis."""
         r = await self._ensure_redis()
         await r.delete(f"agent_state:{user_id}:{session_id}")
 
@@ -342,7 +402,16 @@ class MemoryService:
     # 8. Execution Memory — tool call trace records
     # ────────────────────────────────────────────────────────────────────
 
-    async def record_execution(self, user_id: str, session_id: str, tool_name: str, input_data: Any, output_data: Any, duration_ms: float) -> None:
+    async def record_execution(
+        self,
+        user_id: str,
+        session_id: str,
+        tool_name: str,
+        input_data: Any,
+        output_data: Any,
+        duration_ms: float,
+    ) -> None:
+        """Append a tool-call trace entry. Keeps only the last 50 records per session."""
         r = await self._ensure_redis()
         key = f"execution:{user_id}:{session_id}:trace"
         entry = {
@@ -355,7 +424,10 @@ class MemoryService:
         await r.rpush(key, json.dumps(entry, default=str))
         await r.ltrim(key, -50, -1)
 
-    async def get_execution_trace(self, user_id: str, session_id: str, limit: int = 20) -> list[dict]:
+    async def get_execution_trace(
+        self, user_id: str, session_id: str, limit: int = 20
+    ) -> list[dict]:
+        """Return the N most recent tool-call trace entries for a session."""
         r = await self._ensure_redis()
         key = f"execution:{user_id}:{session_id}:trace"
         raw = await r.lrange(key, -limit, -1)
@@ -371,11 +443,17 @@ class MemoryService:
     # 9. Knowledge Memory (RAG) — ChromaDB-adjacent cache layer
     # ────────────────────────────────────────────────────────────────────
 
-    async def cache_knowledge(self, query_hash: str, data: Any, ttl: int = 3600) -> None:
+    async def cache_knowledge(
+        self, query_hash: str, data: Any, ttl: int = 3600
+    ) -> None:
+        """Cache a RAG result keyed by query hash (default TTL: 1 hour)."""
         r = await self._ensure_redis()
-        await r.set(f"knowledge_cache:{query_hash}", json.dumps(data, default=str), ex=ttl)
+        await r.set(
+            f"knowledge_cache:{query_hash}", json.dumps(data, default=str), ex=ttl
+        )
 
     async def get_knowledge(self, query_hash: str) -> Any | None:
+        """Retrieve a cached RAG result by query hash."""
         r = await self._ensure_redis()
         raw = await r.get(f"knowledge_cache:{query_hash}")
         if raw:
@@ -386,6 +464,7 @@ class MemoryService:
         return None
 
     async def invalidate_knowledge_cache(self) -> None:
+        """Delete all cached knowledge entries matching knowledge_cache:*."""
         r = await self._ensure_redis()
         keys = []
         async for key in r.scan_iter(match="knowledge_cache:*"):
@@ -398,6 +477,7 @@ class MemoryService:
     # ────────────────────────────────────────────────────────────────────
 
     async def cache_retrieval(self, query: str, data: Any, ttl: int = 300) -> str:
+        """Cache a hybrid-search result keyed by SHA-256 hash (default TTL: 5 minutes). Returns the hash."""
         r = await self._ensure_redis()
         cache_hash = hashlib.sha256(query.encode()).hexdigest()[:16]
         key = f"retrieval_cache:{cache_hash}"
@@ -405,6 +485,7 @@ class MemoryService:
         return cache_hash
 
     async def get_retrieval(self, query: str) -> Any | None:
+        """Retrieve a cached hybrid-search result by original query text."""
         r = await self._ensure_redis()
         cache_hash = hashlib.sha256(query.encode()).hexdigest()[:16]
         raw = await r.get(f"retrieval_cache:{cache_hash}")
@@ -416,6 +497,7 @@ class MemoryService:
         return None
 
     async def invalidate_retrieval_cache(self) -> None:
+        """Delete all cached retrieval entries matching retrieval_cache:*."""
         r = await self._ensure_redis()
         keys = []
         async for key in r.scan_iter(match="retrieval_cache:*"):

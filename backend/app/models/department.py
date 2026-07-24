@@ -10,6 +10,8 @@ from app.db.base import Base
 
 
 class Department(Base):
+    """Organisational unit with an optional head user."""
+
     __tablename__ = "departments"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -20,4 +22,9 @@ class Department(Base):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
 
-    users = relationship("User", back_populates="department", lazy="selectin", foreign_keys="[User.department_id]")
+    users = relationship(
+        "User",
+        back_populates="department",
+        lazy="selectin",
+        foreign_keys="[User.department_id]",
+    )

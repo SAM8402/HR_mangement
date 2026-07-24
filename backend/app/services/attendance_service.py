@@ -1,3 +1,9 @@
+"""Business logic for attendance tracking.
+
+Handles daily check-in/out, status queries, and monthly or yearly
+report generation with status counts.
+"""
+
 from __future__ import annotations
 
 import uuid
@@ -8,16 +14,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.attendance import Attendance
 
-
 LATE_CUTOFF_HOUR = 10
 
 
 class AttendanceService:
+    """Service layer encapsulating attendance business rules."""
 
     @staticmethod
     async def mark_attendance(
         db: AsyncSession, user_id: uuid.UUID, notes: str | None = None
     ) -> Attendance:
+        """Check in (or check out if already checked in today). Automatically marks late after 10 AM."""
         today = date.today()
         result = await db.execute(
             select(Attendance).where(
@@ -54,6 +61,7 @@ class AttendanceService:
     async def get_today_status(
         db: AsyncSession, user_id: uuid.UUID
     ) -> Attendance | None:
+        """Return today's attendance record for the user, or None if not yet marked."""
         result = await db.execute(
             select(Attendance).where(
                 and_(
@@ -68,14 +76,17 @@ class AttendanceService:
     async def get_monthly_report(
         db: AsyncSession, user_id: uuid.UUID, year: int, month: int
     ) -> dict:
+        """Return a monthly attendance report with per-status counts and full record list."""
         result = await db.execute(
-            select(Attendance).where(
+            select(Attendance)
+            .where(
                 and_(
                     Attendance.user_id == user_id,
                     func.extract("year", Attendance.date) == year,
                     func.extract("month", Attendance.date) == month,
                 )
-            ).order_by(Attendance.date)
+            )
+            .order_by(Attendance.date)
         )
         records = list(result.scalars().all())
         counts = AttendanceService._compute_counts(records)
@@ -86,13 +97,16 @@ class AttendanceService:
     async def get_yearly_report(
         db: AsyncSession, user_id: uuid.UUID, year: int
     ) -> dict:
+        """Return a yearly attendance report with per-status counts and full record list."""
         result = await db.execute(
-            select(Attendance).where(
+            select(Attendance)
+            .where(
                 and_(
                     Attendance.user_id == user_id,
                     func.extract("year", Attendance.date) == year,
                 )
-            ).order_by(Attendance.date)
+            )
+            .order_by(Attendance.date)
         )
         records = list(result.scalars().all())
         counts = AttendanceService._compute_counts(records)
@@ -101,6 +115,7 @@ class AttendanceService:
 
     @staticmethod
     def _compute_counts(records: list[Attendance]) -> dict:
+        """Tally attendance records by status (present, absent, late, half_day, wfh)."""
         return {
             "total_present": sum(1 for r in records if r.status == "present"),
             "total_absent": sum(1 for r in records if r.status == "absent"),

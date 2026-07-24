@@ -1,3 +1,9 @@
+"""Application entry point.
+
+Launches the FastAPI application server using Uvicorn with hot-reload
+enabled for local development.
+"""
+
 import uvicorn
 
 if __name__ == "__main__":

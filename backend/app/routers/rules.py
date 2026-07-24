@@ -1,9 +1,24 @@
+"""Company rule management routes.
+
+Provides endpoints for creating, updating, listing, and soft-deleting
+company policies and guidelines, including document upload with
+LLM-assisted metadata extraction.
+"""
+
 from __future__ import annotations
 
 import json
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status, BackgroundTasks
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,8 +26,12 @@ from app.core.dependencies import get_current_user, require_role
 from app.db.session import get_db
 from app.models.company_rule import CompanyRule
 from app.models.user import User
-from app.schemas.company import CompanyRuleCreate, CompanyRuleResponse, CompanyRuleUpdate
-from app.services.doc_processor import extract_text_from_pdf, extract_text_from_docx
+from app.schemas.company import (
+    CompanyRuleCreate,
+    CompanyRuleResponse,
+    CompanyRuleUpdate,
+)
+from app.services.doc_processor import extract_text_from_docx, extract_text_from_pdf
 
 router = APIRouter(prefix="/api/rules", tags=["rules"])
 
@@ -61,8 +80,7 @@ async def create_rule(
             background_tasks.add_task(
                 embed_document,
                 text=(
-                    f"Company Rule - {rule.category}: {rule.title}\n"
-                    f"{rule.content}"
+                    f"Company Rule - {rule.category}: {rule.title}\n" f"{rule.content}"
                 ),
                 metadata={
                     "type": "company_rule",
@@ -86,9 +104,7 @@ async def update_rule(
     background_tasks: BackgroundTasks = None,
 ):
     """Update a company rule and re-embed."""
-    result = await db.execute(
-        select(CompanyRule).where(CompanyRule.id == rule_id)
-    )
+    result = await db.execute(select(CompanyRule).where(CompanyRule.id == rule_id))
     rule = result.scalar_one_or_none()
     if not rule:
         raise HTTPException(
@@ -109,8 +125,7 @@ async def update_rule(
             background_tasks.add_task(
                 embed_document,
                 text=(
-                    f"Company Rule - {rule.category}: {rule.title}\n"
-                    f"{rule.content}"
+                    f"Company Rule - {rule.category}: {rule.title}\n" f"{rule.content}"
                 ),
                 metadata={
                     "type": "company_rule",
@@ -132,9 +147,7 @@ async def deactivate_rule(
     current_user: User = Depends(require_role("admin", "manager", "hr")),
 ):
     """Soft-delete a company rule."""
-    result = await db.execute(
-        select(CompanyRule).where(CompanyRule.id == rule_id)
-    )
+    result = await db.execute(select(CompanyRule).where(CompanyRule.id == rule_id))
     rule = result.scalar_one_or_none()
     if not rule:
         raise HTTPException(
@@ -145,6 +158,7 @@ async def deactivate_rule(
     await db.flush()
     try:
         from app.ai.embeddings import delete_embeddings
+
         delete_embeddings(str(rule_id))
     except Exception:
         pass
@@ -163,7 +177,9 @@ async def upload_rule_doc(
     background_tasks: BackgroundTasks = None,
 ):
     """Upload a .docx or .pdf file, parse it, and create a company rule."""
-    if not file.filename or not (file.filename.endswith(".docx") or file.filename.endswith(".pdf")):
+    if not file.filename or not (
+        file.filename.endswith(".docx") or file.filename.endswith(".pdf")
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only .docx and .pdf files are supported",
@@ -176,21 +192,28 @@ async def upload_rule_doc(
         text = extract_text_from_docx(content)
 
     # Ask LLM to determine title and category
-    from langchain_core.messages import SystemMessage, HumanMessage
+    from langchain_core.messages import HumanMessage, SystemMessage
+
     from app.ai.agent import get_llm
-    
+
     llm = await get_llm(temperature=0.1)
     prompt = (
         "Identify a suitable title and category for this company policy document text. "
         "Categories must be one of: 'leave', 'conduct', 'benefits', 'general'. "
         "Respond ONLY with a valid JSON object like:\n"
-        "{\"title\": \"string\", \"category\": \"string\"}\n\n"
+        '{"title": "string", "category": "string"}\n\n'
         f"Text snippet:\n{text[:1000]}"
     )
-    
+
     try:
-        res = await llm.ainvoke([SystemMessage(content="You parse text metadata to JSON."), HumanMessage(content=prompt)])
+        res = await llm.ainvoke(
+            [
+                SystemMessage(content="You parse text metadata to JSON."),
+                HumanMessage(content=prompt),
+            ]
+        )
         from app.ai.agent import clean_content
+
         cleaned = clean_content(res.content).strip()
         if cleaned.startswith("```"):
             cleaned = cleaned.split("\n", 1)[1]
@@ -219,6 +242,7 @@ async def upload_rule_doc(
     if background_tasks:
         try:
             from app.ai.embeddings import embed_document
+
             background_tasks.add_task(
                 embed_document,
                 text=f"Company Rule - {rule.category}: {rule.title}\n{rule.content}",
@@ -234,4 +258,3 @@ async def upload_rule_doc(
             pass
 
     return rule
-

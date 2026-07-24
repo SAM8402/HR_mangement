@@ -11,6 +11,8 @@ from app.db.base import Base
 
 
 class WorkUpdate(Base):
+    """Daily work log entry with title, description, tags, and department."""
+
     __tablename__ = "work_updates"
 
     id: Mapped[uuid.UUID] = mapped_column(

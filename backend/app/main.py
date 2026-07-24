@@ -1,3 +1,10 @@
+"""FastAPI application factory and lifecycle management.
+
+Initializes the FastAPI app, configures CORS and exception handlers,
+registers all API routers, and manages startup/shutdown events including
+database setup, seed data population, and cache connections.
+"""
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -13,8 +20,19 @@ from app.core.security import hash_password
 from app.db.base import Base
 from app.db.session import async_session, engine
 from app.models import (  # noqa: F401  — ensure all models are registered
-    Attendance, ChatFeedback, CompanyRole, CompanyRule, Department,
-    LeaveBalance, LeaveRequest, LeaveType, User, WorkUpdate, ChatSession, ChatMessage)
+    Attendance,
+    ChatFeedback,
+    ChatMessage,
+    ChatSession,
+    CompanyRole,
+    CompanyRule,
+    Department,
+    LeaveBalance,
+    LeaveRequest,
+    LeaveType,
+    User,
+    WorkUpdate,
+)
 from app.services.cache_service import cache_service
 from app.services.memory_service import memory_service
 
@@ -146,7 +164,17 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ── Include routers ──────────────────────────────────────────────────────────
 
 from app.routers import users  # noqa: E402
-from app.routers import attendance, auth, chat, departments, docs, leaves, roles, rules, work_updates
+from app.routers import (
+    attendance,
+    auth,
+    chat,
+    departments,
+    docs,
+    leaves,
+    roles,
+    rules,
+    work_updates,
+)
 
 app.include_router(attendance.router)
 app.include_router(auth.router)

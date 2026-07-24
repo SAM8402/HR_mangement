@@ -1,3 +1,10 @@
+"""Tool functions called by the AI agent.
+
+Provides the concrete implementations invoked by the LangGraph agent
+nodes for RAG queries, leave lookups, work updates, web fallback
+search, leave application, and work update creation.
+"""
+
 from __future__ import annotations
 
 import uuid
@@ -72,6 +79,7 @@ async def work_updates_tool(user_id: str) -> str:
 async def web_search_tool(query: str) -> str:
     """Fallback search on the web using DuckDuckGo."""
     from duckduckgo_search import DDGS
+
     try:
         with DDGS() as ddgs:
             results = ddgs.text(query, max_results=5)
@@ -79,13 +87,17 @@ async def web_search_tool(query: str) -> str:
                 return "No external web results found."
             lines = []
             for r in results:
-                lines.append(f"[Web Source: {r.get('title', 'Unknown')}] ({r.get('href', '')})\n{r.get('body', '')}")
+                lines.append(
+                    f"[Web Source: {r.get('title', 'Unknown')}] ({r.get('href', '')})\n{r.get('body', '')}"
+                )
             return "\n\n---\n\n".join(lines)
     except Exception as e:
         return f"Web search failed: {str(e)}"
 
 
-async def apply_leave_tool(user_id: str, leave_type: str, from_date: str, to_date: str, reason: str) -> str:
+async def apply_leave_tool(
+    user_id: str, leave_type: str, from_date: str, to_date: str, reason: str
+) -> str:
     """Apply for leave in the system."""
     from datetime import date
 
@@ -96,7 +108,9 @@ async def apply_leave_tool(user_id: str, leave_type: str, from_date: str, to_dat
         from_date_obj = date.fromisoformat(from_date)
         to_date_obj = date.fromisoformat(to_date)
     except ValueError:
-        return f"Invalid date format '{from_date}' or '{to_date}'. Please use YYYY-MM-DD."
+        return (
+            f"Invalid date format '{from_date}' or '{to_date}'. Please use YYYY-MM-DD."
+        )
 
     data = LeaveApplyRequest(
         leave_type=leave_type,
@@ -123,7 +137,13 @@ async def apply_leave_tool(user_id: str, leave_type: str, from_date: str, to_dat
             return f"Failed to apply for leave: {str(e)}"
 
 
-async def add_work_update_tool(user_id: str, title: str, description: str, date_str: str, tags: list[str] | None = None) -> str:
+async def add_work_update_tool(
+    user_id: str,
+    title: str,
+    description: str,
+    date_str: str,
+    tags: list[str] | None = None,
+) -> str:
     """Add a work update entry."""
     from datetime import date
 
@@ -152,4 +172,3 @@ async def add_work_update_tool(user_id: str, title: str, description: str, date_
             f"  Date: {date_str}\n"
             f"  Tags: {tag_str}"
         )
-

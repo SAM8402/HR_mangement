@@ -1,3 +1,10 @@
+"""LangGraph-based AI chat agent for HR assistance.
+
+Builds and compiles a state graph that rewrites queries, classifies
+intent, retrieves context (RAG / DB / web), generates responses,
+and verifies factual grounding via hallucination checks.
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -12,14 +19,41 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 
-from app.ai.tools import apply_leave_tool, add_work_update_tool, leave_balance_tool, rag_tool, work_updates_tool, web_search_tool
+from app.ai.tools import (
+    add_work_update_tool,
+    apply_leave_tool,
+    leave_balance_tool,
+    rag_tool,
+    web_search_tool,
+    work_updates_tool,
+)
 from app.core.config import settings
 from app.services.cache_service import cache_service
 
 os.environ["GOOGLE_API_KEY"] = settings.GOOGLE_API_KEY
 
 
+def enforce_token_budget(
+    messages: list,
+    max_chars: int = 600000,
+) -> list:
+    """Truncate oldest messages if total input exceeds max_chars (~150K tokens by default)."""
+    total = sum(
+        len(m.content) if hasattr(m, "content") and isinstance(m.content, str) else 0
+        for m in messages
+    )
+    while total > max_chars and len(messages) > 1:
+        removed = messages.pop(0)
+        total -= (
+            len(removed.content)
+            if hasattr(removed, "content") and isinstance(removed.content, str)
+            else 0
+        )
+    return messages
+
+
 def clean_content(content) -> str:
+    """Normalise LLM output to a plain string, handling list-of-dict content formats."""
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -37,6 +71,8 @@ def clean_content(content) -> str:
 
 
 class HRAgentState(TypedDict):
+    """State schema for the LangGraph HR agent with messages, intent, context, and user metadata."""
+
     messages: Annotated[list, add_messages]
     intent: str
     context: str
@@ -51,24 +87,20 @@ CACHE_TTL = 300  # 5 minutes
 
 
 async def check_combination(model: str, key: str, timeout: float = 2.0) -> bool:
+    """Test whether a model+api-key combination works; caches result for 5 minutes."""
     now = time.time()
     cache_key = (model, key)
     if cache_key in _combo_cache:
         status, expiry = _combo_cache[cache_key]
         if now < expiry:
             return status == "working"
-            
+
     test_llm = ChatGoogleGenerativeAI(
-        model=model,
-        temperature=0.0,
-        google_api_key=key,
-        timeout=timeout,
-        max_retries=0
+        model=model, temperature=0.0, google_api_key=key, timeout=timeout, max_retries=0
     )
     try:
         await asyncio.wait_for(
-            test_llm.ainvoke([HumanMessage(content="1")]),
-            timeout=timeout
+            test_llm.ainvoke([HumanMessage(content="1")]), timeout=timeout
         )
         _combo_cache[cache_key] = ("working", now + CACHE_TTL)
         return True
@@ -78,63 +110,67 @@ async def check_combination(model: str, key: str, timeout: float = 2.0) -> bool:
 
 
 async def get_llm(temperature: float = 0.3):
+    """Return a ChatGoogleGenerativeAI with fallbacks — tries every API key + model combo, returns the first working one."""
     primary_model = settings.GEMINI_MODEL
     fallback_models = settings.fallback_models
-    
+
     # Get all parsed api keys
     api_keys = settings.api_keys
     if not api_keys and settings.GOOGLE_API_KEY:
         api_keys = [settings.GOOGLE_API_KEY]
-        
+
     candidates = []
-    
+
     # 1. Primary model with all keys
     for key in api_keys:
         candidates.append((primary_model, key))
-        
+
     # 2. Fallback models with all keys
     for model_name in fallback_models:
         if model_name != primary_model:
             for key in api_keys:
                 candidates.append((model_name, key))
-                
+
     try:
         checks = [check_combination(m, k) for m, k in candidates]
         results = await asyncio.gather(*checks)
     except Exception:
         results = [True] * len(candidates)
-        
+
     working_candidates = [candidates[i] for i, is_ok in enumerate(results) if is_ok]
-    
+
     if not working_candidates:
         working_candidates = candidates
-        
+
     runnables = []
     for model_name, key in working_candidates:
         runnables.append(
             ChatGoogleGenerativeAI(
                 model=model_name,
                 temperature=temperature,
-                google_api_key=key
+                google_api_key=key,
+                max_tokens=8192,
             )
         )
-        
+
     if not runnables:
         return ChatGoogleGenerativeAI(
             model=primary_model,
             temperature=temperature,
-            google_api_key=settings.GOOGLE_API_KEY
+            google_api_key=settings.GOOGLE_API_KEY,
+            max_tokens=8192,
         )
-        
+
     primary = runnables[0]
     fallbacks = runnables[1:]
-    
+
     if fallbacks:
         return primary.with_fallbacks(fallbacks)
     return primary
 
 
 async def _get_llm():
+    """Convenience wrapper around get_llm with a fixed 0.3 temperature."""
     return await get_llm(temperature=0.3)
 
 
@@ -146,7 +182,7 @@ async def query_rewriting(state: HRAgentState) -> dict:
     llm = await _get_llm()
     query = state["messages"][-1].content
 
-    prompt = (
+    rewrite_prompt = (
         "You are an AI HR assistant. Rewrite the following user query to clarify any relative time expressions "
         "(like 'next week', 'tomorrow') or ambiguous terms (assume today is Wednesday, June 24, 2026). "
         "Also, generate 2 alternative queries for searching company policies.\n\n"
@@ -161,7 +197,7 @@ async def query_rewriting(state: HRAgentState) -> dict:
         res = await llm.ainvoke(
             [
                 SystemMessage(content="You generate query variants as JSON."),
-                HumanMessage(content=prompt),
+                HumanMessage(content=rewrite_prompt),
             ]
         )
         cleaned = clean_content(res.content).strip()
@@ -182,7 +218,9 @@ async def query_rewriting(state: HRAgentState) -> dict:
 async def classify_intent(state: HRAgentState) -> dict:
     """Classify the user's query intent using the primary rewritten query."""
     llm = await _get_llm()
-    primary_query = state.get("rewritten_queries", [""])[0] or state["messages"][-1].content
+    primary_query = (
+        state.get("rewritten_queries", [""])[0] or state["messages"][-1].content
+    )
 
     classification_prompt = (
         "You are an intent classifier for an HR assistant. "
@@ -207,7 +245,15 @@ async def classify_intent(state: HRAgentState) -> dict:
     intent = clean_content(response.content).strip().lower()
 
     # Map variations
-    if intent not in ("rag", "leave", "apply_leave", "work", "add_work_update", "web_search", "direct"):
+    if intent not in (
+        "rag",
+        "leave",
+        "apply_leave",
+        "work",
+        "add_work_update",
+        "web_search",
+        "direct",
+    ):
         if "apply" in intent and "leave" in intent:
             intent = "apply_leave"
         elif "add" in intent and "work" in intent:
@@ -262,13 +308,12 @@ async def rag_retriever(state: HRAgentState) -> dict:
         title = doc["metadata"].get("title", "Policy Document")
         doc_type = doc["metadata"].get("type", "company_rule")
 
-        context_parts.append(f"[{doc_id}] (Source: {source_name} - {title})\n{doc['content']}")
-        citations.append({
-            "id": doc_id,
-            "source": source_name,
-            "title": title,
-            "type": doc_type
-        })
+        context_parts.append(
+            f"[{doc_id}] (Source: {source_name} - {title})\n{doc['content']}"
+        )
+        citations.append(
+            {"id": doc_id, "source": source_name, "title": title, "type": doc_type}
+        )
 
     context = "\n\n---\n\n".join(context_parts)
 
@@ -300,7 +345,9 @@ async def db_leave_tool_node(state: HRAgentState) -> dict:
     """Query leave data for the user."""
     user_id = state.get("user_id", "")
     if not user_id:
-        return {"context": "User ID not available. Please log in to check leave balance."}
+        return {
+            "context": "User ID not available. Please log in to check leave balance."
+        }
     context = await leave_balance_tool(user_id)
     return {"context": context, "citations": []}
 
@@ -309,7 +356,9 @@ async def db_work_tool_node(state: HRAgentState) -> dict:
     """Query work update data for the user."""
     user_id = state.get("user_id", "")
     if not user_id:
-        return {"context": "User ID not available. Please log in to check work updates."}
+        return {
+            "context": "User ID not available. Please log in to check work updates."
+        }
     context = await work_updates_tool(user_id)
     return {"context": context, "citations": []}
 
@@ -318,12 +367,14 @@ async def web_search_node(state: HRAgentState) -> dict:
     """Fallback web search when query doesn't match internal knowledge."""
     query = state.get("rewritten_queries", [""])[0] or state["messages"][-1].content
     context = await web_search_tool(query)
-    citations = [{
-        "id": 1,
-        "source": "Web Search Fallback",
-        "title": "DuckDuckGo Search",
-        "type": "web"
-    }]
+    citations = [
+        {
+            "id": 1,
+            "source": "Web Search Fallback",
+            "title": "DuckDuckGo Search",
+            "type": "web",
+        }
+    ]
     return {"context": context, "citations": citations}
 
 
@@ -349,10 +400,12 @@ async def apply_leave_node(state: HRAgentState) -> dict:
     )
 
     try:
-        res = await llm.ainvoke([
-            SystemMessage(content="You extract leave details as JSON."),
-            HumanMessage(content=extraction_prompt),
-        ])
+        res = await llm.ainvoke(
+            [
+                SystemMessage(content="You extract leave details as JSON."),
+                HumanMessage(content=extraction_prompt),
+            ]
+        )
         cleaned = clean_content(res.content).strip()
         if cleaned.startswith("```"):
             cleaned = cleaned.split("\n", 1)[1]
@@ -369,8 +422,10 @@ async def apply_leave_node(state: HRAgentState) -> dict:
             reason=data.get("reason", query),
         )
     except json.JSONDecodeError:
-        result = ("I couldn't understand the leave details from your request. "
-                  "Please specify: leave type (casual/sick/earned/unpaid), start date, end date, and reason.")
+        result = (
+            "I couldn't understand the leave details from your request. "
+            "Please specify: leave type (casual/sick/earned/unpaid), start date, end date, and reason."
+        )
     except Exception as e:
         result = f"Error processing leave request: {str(e)}"
 
@@ -399,10 +454,12 @@ async def add_work_update_node(state: HRAgentState) -> dict:
     )
 
     try:
-        res = await llm.ainvoke([
-            SystemMessage(content="You extract work update details as JSON."),
-            HumanMessage(content=extraction_prompt),
-        ])
+        res = await llm.ainvoke(
+            [
+                SystemMessage(content="You extract work update details as JSON."),
+                HumanMessage(content=extraction_prompt),
+            ]
+        )
         cleaned = clean_content(res.content).strip()
         if cleaned.startswith("```"):
             cleaned = cleaned.split("\n", 1)[1]
@@ -419,8 +476,10 @@ async def add_work_update_node(state: HRAgentState) -> dict:
             tags=data.get("tags", []),
         )
     except json.JSONDecodeError:
-        result = ("I couldn't understand the work update details. "
-                  "Please specify: title, description, and optionally date and tags.")
+        result = (
+            "I couldn't understand the work update details. "
+            "Please specify: title, description, and optionally date and tags."
+        )
     except Exception as e:
         result = f"Error adding work update: {str(e)}"
 
@@ -475,12 +534,13 @@ async def generate_response(state: HRAgentState) -> dict:
 
     # Incorporate history/conversation memory
     chat_history = []
-    # Feed last 10 messages of history
     for msg in state["messages"][:-1]:
         chat_history.append(msg)
+    chat_history = enforce_token_budget(chat_history)
 
     response = await llm.ainvoke(
-        chat_history + [
+        chat_history
+        + [
             SystemMessage(content=system_prompt),
             HumanMessage(content=query),
         ]
@@ -507,7 +567,7 @@ async def hallucination_check(state: HRAgentState) -> dict:
         return {}
 
     llm = await _get_llm()
-    prompt = (
+    hallucination_prompt = (
         "Verify if the AI's response is fully grounded in and supported by the retrieved context. "
         "If there are claims in the response that are NOT supported by the context, flag them as hallucinated.\n\n"
         f"Retrieved Context:\n{context}\n\n"
@@ -522,7 +582,7 @@ async def hallucination_check(state: HRAgentState) -> dict:
         res = await llm.ainvoke(
             [
                 SystemMessage(content="You verify factual grounding."),
-                HumanMessage(content=prompt),
+                HumanMessage(content=hallucination_prompt),
             ]
         )
         cleaned = clean_content(res.content).strip()

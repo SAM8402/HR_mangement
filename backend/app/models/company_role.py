@@ -11,6 +11,8 @@ from app.db.base import Base
 
 
 class CompanyRole(Base):
+    """Job role definition with title, description, responsibilities, and required skills."""
+
     __tablename__ = "company_roles"
 
     id: Mapped[uuid.UUID] = mapped_column(

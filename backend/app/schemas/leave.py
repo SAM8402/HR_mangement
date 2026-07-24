@@ -1,3 +1,9 @@
+"""Leave management request/response schemas.
+
+Defines Pydantic models for leave application, approval/rejection,
+balance queries, and leave type configuration.
+"""
+
 from __future__ import annotations
 
 import uuid

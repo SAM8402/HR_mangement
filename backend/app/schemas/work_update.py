@@ -1,7 +1,13 @@
+"""Work update request/response schemas.
+
+Defines Pydantic models for creating, updating, and listing
+daily work log entries.
+"""
+
 from __future__ import annotations
 
-import uuid
 import datetime as dt
+import uuid
 
 from pydantic import BaseModel
 

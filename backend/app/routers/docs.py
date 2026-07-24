@@ -1,3 +1,10 @@
+"""Document upload and management routes.
+
+Provides endpoints for uploading, listing, retrieving, and deleting
+role and rule documents (.docx / .pdf) with automatic parsing and
+LLM-based metadata extraction.
+"""
+
 from __future__ import annotations
 
 import json
@@ -5,7 +12,15 @@ import os
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +32,11 @@ from app.models.company_rule import CompanyRule
 from app.models.user import User
 from app.schemas.company import CompanyRoleResponse, CompanyRuleResponse
 from app.services.doc_parser import parse_docx
-from app.services.doc_processor import extract_text_from_pdf, extract_text_from_docx, parse_role_text_with_llm
+from app.services.doc_processor import (
+    extract_text_from_docx,
+    extract_text_from_pdf,
+    parse_role_text_with_llm,
+)
 
 router = APIRouter(prefix="/api/docs", tags=["docs"])
 
@@ -41,12 +60,14 @@ async def list_role_docs(current_user: User = Depends(get_current_user)):
     files = []
     for f in sorted(ROLES_DIR.iterdir(), key=lambda p: p.name):
         if f.suffix in (".docx", ".pdf"):
-            files.append({
-                "name": f.name,
-                "size": f.stat().st_size,
-                "modified": f.stat().st_mtime,
-                "type": "role",
-            })
+            files.append(
+                {
+                    "name": f.name,
+                    "size": f.stat().st_size,
+                    "modified": f.stat().st_mtime,
+                    "type": "role",
+                }
+            )
     return files
 
 
@@ -66,8 +87,12 @@ async def upload_role_doc(
     background_tasks: BackgroundTasks = None,
 ):
     _ensure_dirs()
-    if not file.filename or not (file.filename.endswith(".docx") or file.filename.endswith(".pdf")):
-        raise HTTPException(status_code=400, detail="Only .docx and .pdf files are supported")
+    if not file.filename or not (
+        file.filename.endswith(".docx") or file.filename.endswith(".pdf")
+    ):
+        raise HTTPException(
+            status_code=400, detail="Only .docx and .pdf files are supported"
+        )
 
     content = await file.read()
     filepath = ROLES_DIR / file.filename
@@ -95,18 +120,30 @@ async def upload_role_doc(
         if background_tasks:
             try:
                 from app.ai.embeddings import embed_document
+
                 background_tasks.add_task(
                     embed_document,
                     text=f"Role: {role.title}\nDescription: {role.description}\nResponsibilities: {role.responsibilities}\nSkills: {', '.join(role.required_skills)}",
-                    metadata={"type": "company_role", "title": role.title, "source": file.filename, "id": str(role.id)},
+                    metadata={
+                        "type": "company_role",
+                        "title": role.title,
+                        "source": file.filename,
+                        "id": str(role.id),
+                    },
                 )
             except Exception:
                 pass
 
-        return {"message": "Role document uploaded", "file": file.filename, "role": CompanyRoleResponse.model_validate(role)}
+        return {
+            "message": "Role document uploaded",
+            "file": file.filename,
+            "role": CompanyRoleResponse.model_validate(role),
+        }
     except Exception as e:
         filepath.unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail=f"Failed to parse document: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to parse document: {str(e)}"
+        )
 
 
 @router.delete("/roles/{filename}")
@@ -122,7 +159,9 @@ async def delete_role_doc(
     filepath.unlink()
 
     result = await db.execute(
-        select(CompanyRole).where(CompanyRole.title.ilike(f"%{filename.rsplit('.', 1)[0]}%"))
+        select(CompanyRole).where(
+            CompanyRole.title.ilike(f"%{filename.rsplit('.', 1)[0]}%")
+        )
     )
     role = result.scalar_one_or_none()
     if role:
@@ -141,12 +180,14 @@ async def list_rule_docs(current_user: User = Depends(get_current_user)):
     files = []
     for f in sorted(RULES_DIR.iterdir(), key=lambda p: p.name):
         if f.suffix in (".docx", ".pdf"):
-            files.append({
-                "name": f.name,
-                "size": f.stat().st_size,
-                "modified": f.stat().st_mtime,
-                "type": "rule",
-            })
+            files.append(
+                {
+                    "name": f.name,
+                    "size": f.stat().st_size,
+                    "modified": f.stat().st_mtime,
+                    "type": "rule",
+                }
+            )
     return files
 
 
@@ -166,8 +207,12 @@ async def upload_rule_doc(
     background_tasks: BackgroundTasks = None,
 ):
     _ensure_dirs()
-    if not file.filename or not (file.filename.endswith(".docx") or file.filename.endswith(".pdf")):
-        raise HTTPException(status_code=400, detail="Only .docx and .pdf files are supported")
+    if not file.filename or not (
+        file.filename.endswith(".docx") or file.filename.endswith(".pdf")
+    ):
+        raise HTTPException(
+            status_code=400, detail="Only .docx and .pdf files are supported"
+        )
 
     content = await file.read()
     filepath = RULES_DIR / file.filename
@@ -179,8 +224,9 @@ async def upload_rule_doc(
         else:
             text = extract_text_from_docx(content)
 
-        from langchain_core.messages import SystemMessage, HumanMessage
-        from app.ai.agent import get_llm, clean_content
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        from app.ai.agent import clean_content, get_llm
 
         llm = await get_llm(temperature=0.1)
         prompt = (
@@ -191,7 +237,12 @@ async def upload_rule_doc(
             f"Text snippet:\n{text[:1000]}"
         )
         try:
-            res = await llm.ainvoke([SystemMessage(content="You parse text metadata to JSON."), HumanMessage(content=prompt)])
+            res = await llm.ainvoke(
+                [
+                    SystemMessage(content="You parse text metadata to JSON."),
+                    HumanMessage(content=prompt),
+                ]
+            )
             cleaned = clean_content(res.content).strip()
             if cleaned.startswith("```"):
                 cleaned = cleaned.split("\n", 1)[1]
@@ -219,21 +270,31 @@ async def upload_rule_doc(
         if background_tasks:
             try:
                 from app.ai.embeddings import embed_document
+
                 background_tasks.add_task(
                     embed_document,
                     text=f"Company Rule - {rule.category}: {rule.title}\n{rule.content}",
                     metadata={
-                        "type": "company_rule", "title": rule.title,
-                        "category": rule.category, "source": file.filename, "id": str(rule.id),
+                        "type": "company_rule",
+                        "title": rule.title,
+                        "category": rule.category,
+                        "source": file.filename,
+                        "id": str(rule.id),
                     },
                 )
             except Exception:
                 pass
 
-        return {"message": "Rule document uploaded", "file": file.filename, "rule": CompanyRuleResponse.model_validate(rule)}
+        return {
+            "message": "Rule document uploaded",
+            "file": file.filename,
+            "rule": CompanyRuleResponse.model_validate(rule),
+        }
     except Exception as e:
         filepath.unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail=f"Failed to parse document: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to parse document: {str(e)}"
+        )
 
 
 @router.delete("/rules/{filename}")
@@ -249,7 +310,9 @@ async def delete_rule_doc(
     filepath.unlink()
 
     result = await db.execute(
-        select(CompanyRule).where(CompanyRule.title.ilike(f"%{filename.rsplit('.', 1)[0]}%"))
+        select(CompanyRule).where(
+            CompanyRule.title.ilike(f"%{filename.rsplit('.', 1)[0]}%")
+        )
     )
     rule = result.scalar_one_or_none()
     if rule:

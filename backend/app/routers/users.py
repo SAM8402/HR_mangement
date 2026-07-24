@@ -1,3 +1,9 @@
+"""User management routes.
+
+Provides endpoints for listing, creating, updating, and deactivating
+users with role-based access control.
+"""
+
 from __future__ import annotations
 
 import uuid
@@ -12,7 +18,13 @@ from app.core.security import hash_password
 from app.db.session import get_db
 from app.models.leave import LeaveBalance, LeaveType
 from app.models.user import User
-from app.schemas.user import UserCreate, UserListResponse, UserProfileImageUpdate, UserResponse, UserUpdate
+from app.schemas.user import (
+    UserCreate,
+    UserListResponse,
+    UserProfileImageUpdate,
+    UserResponse,
+    UserUpdate,
+)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -45,9 +57,7 @@ async def list_users(
     current_user: User = Depends(require_role("admin", "manager", "hr")),
 ):
     """List all users (admin/manager/hr only)."""
-    result = await db.execute(
-        select(User).order_by(User.created_at.desc())
-    )
+    result = await db.execute(select(User).order_by(User.created_at.desc()))
     users = result.scalars().all()
     return UserListResponse(
         users=[UserResponse.model_validate(u) for u in users],
@@ -124,9 +134,7 @@ async def update_user(
 
     # Hash password if provided
     if "password" in update_data:
-        update_data["password_hash"] = hash_password(
-            update_data.pop("password")
-        )
+        update_data["password_hash"] = hash_password(update_data.pop("password"))
 
     for field, value in update_data.items():
         setattr(user, field, value)
@@ -144,7 +152,11 @@ async def update_profile_image(
     current_user: User = Depends(get_current_user),
 ):
     """Update a user's profile image (base64). Users can update their own, admins can update any."""
-    if current_user.id != user_id and current_user.role not in ("admin", "manager", "hr"):
+    if current_user.id != user_id and current_user.role not in (
+        "admin",
+        "manager",
+        "hr",
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to update this user's profile image",

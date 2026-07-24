@@ -1,3 +1,9 @@
+"""Business logic for leave management.
+
+Handles leave application, approval routing, balance deduction,
+rejection, cancellation, and query operations.
+"""
+
 from __future__ import annotations
 
 import uuid
@@ -14,6 +20,8 @@ from app.utils.date_utils import calculate_business_days
 
 
 class LeaveService:
+    """Service layer encapsulating all leave-related business rules."""
+
     # ── Approver routing ──────────────────────────────────────────────────
 
     @staticmethod
@@ -80,6 +88,7 @@ class LeaveService:
     async def apply_leave(
         db: AsyncSession, user_id: uuid.UUID, data: LeaveApplyRequest
     ) -> LeaveRequest:
+        """Create a new leave request after validating dates, balance, and auto-routing to an approver."""
         # Fetch user
         result = await db.execute(select(User).where(User.id == user_id))
         user = result.scalar_one()
@@ -151,6 +160,7 @@ class LeaveService:
     async def approve_leave(
         db: AsyncSession, leave_id: uuid.UUID, approver_id: uuid.UUID
     ) -> LeaveRequest:
+        """Approve a pending leave request and deduct the balance for paid leave types."""
         result = await db.execute(
             select(LeaveRequest).where(LeaveRequest.id == leave_id)
         )
@@ -197,6 +207,7 @@ class LeaveService:
         approver_id: uuid.UUID,
         reason: str | None = None,
     ) -> LeaveRequest:
+        """Reject a pending leave request with an optional reason."""
         result = await db.execute(
             select(LeaveRequest).where(LeaveRequest.id == leave_id)
         )
@@ -220,6 +231,7 @@ class LeaveService:
     async def cancel_leave(
         db: AsyncSession, leave_id: uuid.UUID, user_id: uuid.UUID
     ) -> LeaveRequest:
+        """Cancel a pending leave request. Only the original applicant can cancel."""
         result = await db.execute(
             select(LeaveRequest).where(LeaveRequest.id == leave_id)
         )
@@ -257,6 +269,7 @@ class LeaveService:
 
     @staticmethod
     async def get_my_leaves(db: AsyncSession, user_id: uuid.UUID) -> list[LeaveRequest]:
+        """Return all leave requests submitted by the given user, newest first."""
         result = await db.execute(
             select(LeaveRequest)
             .where(LeaveRequest.applicant_id == user_id)
@@ -268,6 +281,7 @@ class LeaveService:
     async def get_pending_leaves(
         db: AsyncSession, approver_id: uuid.UUID
     ) -> list[LeaveRequest]:
+        """Return pending leave requests assigned to a specific approver, newest first."""
         result = await db.execute(
             select(LeaveRequest)
             .where(
@@ -282,6 +296,7 @@ class LeaveService:
 
     @staticmethod
     async def get_all_leaves(db: AsyncSession) -> list[LeaveRequest]:
+        """Return every leave request in the system, newest first."""
         result = await db.execute(
             select(LeaveRequest).order_by(LeaveRequest.created_at.desc())
         )
@@ -291,6 +306,7 @@ class LeaveService:
     async def update_leave_type_days(
         db: AsyncSession, type_id: uuid.UUID, days_per_year: int
     ) -> LeaveType:
+        """Update the annual day allocation for a given leave type."""
         result = await db.execute(select(LeaveType).where(LeaveType.id == type_id))
         leave_type = result.scalar_one_or_none()
         if not leave_type:
@@ -302,6 +318,7 @@ class LeaveService:
 
     @staticmethod
     async def get_balance(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
+        """Return all leave balances (total, used, remaining) for the user across all leave types."""
         result = await db.execute(
             select(LeaveBalance, LeaveType.name)
             .join(LeaveType, LeaveBalance.leave_type_id == LeaveType.id)

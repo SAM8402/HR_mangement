@@ -11,6 +11,8 @@ from app.db.base import Base
 
 
 class ChatFeedback(Base):
+    """User feedback on AI assistant responses with rating and optional comment."""
+
     __tablename__ = "chat_feedbacks"
 
     id: Mapped[uuid.UUID] = mapped_column(

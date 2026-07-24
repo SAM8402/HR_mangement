@@ -1,10 +1,15 @@
+"""Company roles and rules request/response schemas.
+
+Defines Pydantic models for creating, updating, and listing
+job roles and company policies.
+"""
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
 
 from pydantic import BaseModel
-
 
 # ── Company Role ──────────────────────────────────────────────────────────────
 

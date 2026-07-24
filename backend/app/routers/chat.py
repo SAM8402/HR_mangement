@@ -1,3 +1,10 @@
+"""AI chat and feedback routes.
+
+Provides endpoints for conversational AI (with streaming support),
+session management, and user feedback collection for evaluating
+assistant response quality.
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -11,14 +18,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel
-from sqlalchemy import select, func, desc
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.agent import get_agent
 from app.core.dependencies import get_current_user, require_role
 from app.db.session import get_db
-from app.models.user import User
 from app.models.chat_feedback import ChatFeedback
+from app.models.user import User
 from app.services.cache_service import cache_service
 from app.services.memory_service import memory_service
 
@@ -102,7 +109,9 @@ async def rename_session(
 ):
     if not data.title.strip():
         raise HTTPException(status_code=400, detail="Title cannot be empty")
-    await memory_service.rename_session(str(current_user.id), session_id, data.title.strip())
+    await memory_service.rename_session(
+        str(current_user.id), session_id, data.title.strip()
+    )
     return {"message": "Session renamed"}
 
 
@@ -212,8 +221,14 @@ async def chat(
     result = await agent.ainvoke(initial_state)
     elapsed = (time.time() - t0) * 1000
 
-    await memory_service.record_execution(uid, session_id, "agent.ainvoke",
-        {"query": data.query}, result.get("intent", ""), elapsed)
+    await memory_service.record_execution(
+        uid,
+        session_id,
+        "agent.ainvoke",
+        {"query": data.query},
+        result.get("intent", ""),
+        elapsed,
+    )
 
     answer = ""
     intent = result.get("intent", "")
@@ -224,24 +239,45 @@ async def chat(
             answer = msg.content
             break
 
-    now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
-    await memory_service.append_history(uid, session_id, {"role": "user", "content": data.query, "timestamp": now})
-    await memory_service.append_history(uid, session_id, {"role": "assistant", "content": answer, "citations": citations, "timestamp": now})
+    now = (
+        __import__("datetime")
+        .datetime.now(__import__("datetime").timezone.utc)
+        .isoformat()
+    )
+    await memory_service.append_history(
+        uid, session_id, {"role": "user", "content": data.query, "timestamp": now}
+    )
+    await memory_service.append_history(
+        uid,
+        session_id,
+        {
+            "role": "assistant",
+            "content": answer,
+            "citations": citations,
+            "timestamp": now,
+        },
+    )
     await memory_service.touch_session(uid, session_id)
 
     for item in (data.query, answer):
         for prefix in ("My name is ", "I am ", "I work in ", "My role is "):
             if item.lower().startswith(prefix.lower()):
                 fact_key = prefix.lower().replace(" ", "_").rstrip("_")
-                fact_value = item[len(prefix):].split(".")[0].strip()
+                fact_value = item[len(prefix) :].split(".")[0].strip()
                 await memory_service.store_fact(uid, fact_key, fact_value)
 
     try:
-        await cache_service.set(cache_key, {"answer": answer, "intent": intent, "citations": citations}, ttl=3600)
+        await cache_service.set(
+            cache_key,
+            {"answer": answer, "intent": intent, "citations": citations},
+            ttl=3600,
+        )
     except Exception:
         pass
 
-    return ChatResponse(answer=answer, intent=intent, citations=citations, session_id=session_id)
+    return ChatResponse(
+        answer=answer, intent=intent, citations=citations, session_id=session_id
+    )
 
 
 @router.get("/stream")
@@ -312,8 +348,14 @@ async def chat_stream(
         result = await agent.ainvoke(initial_state)
         elapsed = (time.time() - t0) * 1000
 
-        await memory_service.record_execution(uid, sid, "agent.ainvoke",
-            {"query": query}, result.get("intent", ""), elapsed)
+        await memory_service.record_execution(
+            uid,
+            sid,
+            "agent.ainvoke",
+            {"query": query},
+            result.get("intent", ""),
+            elapsed,
+        )
 
         answer = ""
         citations = result.get("citations", [])
@@ -324,9 +366,24 @@ async def chat_stream(
                 answer = msg.content
                 break
 
-        now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
-        await memory_service.append_history(uid, sid, {"role": "user", "content": query, "timestamp": now})
-        await memory_service.append_history(uid, sid, {"role": "assistant", "content": answer, "citations": citations, "timestamp": now})
+        now = (
+            __import__("datetime")
+            .datetime.now(__import__("datetime").timezone.utc)
+            .isoformat()
+        )
+        await memory_service.append_history(
+            uid, sid, {"role": "user", "content": query, "timestamp": now}
+        )
+        await memory_service.append_history(
+            uid,
+            sid,
+            {
+                "role": "assistant",
+                "content": answer,
+                "citations": citations,
+                "timestamp": now,
+            },
+        )
         await memory_service.touch_session(uid, sid)
 
         words = answer.split(" ")
@@ -338,7 +395,11 @@ async def chat_stream(
         yield f"data: {json.dumps({'content': '', 'done': True, 'citations': citations, 'session_id': sid})}\n\n"
 
         try:
-            await cache_service.set(cache_key, {"answer": answer, "intent": intent, "citations": citations}, ttl=3600)
+            await cache_service.set(
+                cache_key,
+                {"answer": answer, "intent": intent, "citations": citations},
+                ttl=3600,
+            )
         except Exception:
             pass
 
@@ -380,23 +441,32 @@ async def get_evaluation_metrics(
 ):
     total_res = await db.execute(select(func.count(ChatFeedback.id)))
     total_count = total_res.scalar() or 0
-    pos_res = await db.execute(select(func.count(ChatFeedback.id)).where(ChatFeedback.rating == True))
+    pos_res = await db.execute(
+        select(func.count(ChatFeedback.id)).where(ChatFeedback.rating == True)
+    )
     pos_count = pos_res.scalar() or 0
-    neg_res = await db.execute(select(func.count(ChatFeedback.id)).where(ChatFeedback.rating == False))
+    neg_res = await db.execute(
+        select(func.count(ChatFeedback.id)).where(ChatFeedback.rating == False)
+    )
     neg_count = neg_res.scalar() or 0
     satisfaction_rate = (pos_count / total_count * 100) if total_count > 0 else 100.0
     recent_neg_res = await db.execute(
-        select(ChatFeedback).where(ChatFeedback.rating == False).order_by(desc(ChatFeedback.created_at)).limit(10)
+        select(ChatFeedback)
+        .where(ChatFeedback.rating == False)
+        .order_by(desc(ChatFeedback.created_at))
+        .limit(10)
     )
     recent_negatives = []
     for item in recent_neg_res.scalars().all():
-        recent_negatives.append({
-            "id": str(item.id),
-            "query": item.query,
-            "response": item.response,
-            "feedback_text": item.feedback_text,
-            "created_at": item.created_at.isoformat(),
-        })
+        recent_negatives.append(
+            {
+                "id": str(item.id),
+                "query": item.query,
+                "response": item.response,
+                "feedback_text": item.feedback_text,
+                "created_at": item.created_at.isoformat(),
+            }
+        )
     return {
         "total_count": total_count,
         "positive_count": pos_count,

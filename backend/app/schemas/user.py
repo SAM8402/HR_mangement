@@ -1,3 +1,9 @@
+"""User management request/response schemas.
+
+Defines Pydantic models for creating, updating, and listing users
+including profile image updates and department name coercion.
+"""
+
 from __future__ import annotations
 
 import uuid

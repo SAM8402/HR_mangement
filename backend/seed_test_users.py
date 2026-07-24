@@ -1,15 +1,35 @@
+"""Seed script for populating the database with test data.
+
+Creates departments, leave types, users (admin / hr / manager /
+employee across departments), leave balances, attendance records
+for the last 30 days, work updates, leave requests, company roles
+and rules, chat sessions with messages, and chat feedback.
+All users share the password "12345678".
+"""
+
 import asyncio
 import random
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select
 
+from app.core.security import hash_password
 from app.db.base import Base
 from app.db.session import async_session, engine
-from app.core.security import hash_password
-from app.models import (Attendance, ChatFeedback, ChatMessage, ChatSession,
-                        CompanyRole, CompanyRule, Department, LeaveBalance,
-                        LeaveRequest, LeaveType, User, WorkUpdate)
+from app.models import (
+    Attendance,
+    ChatFeedback,
+    ChatMessage,
+    ChatSession,
+    CompanyRole,
+    CompanyRule,
+    Department,
+    LeaveBalance,
+    LeaveRequest,
+    LeaveType,
+    User,
+    WorkUpdate,
+)
 
 
 async def main():
@@ -51,24 +71,81 @@ async def main():
             existing_names.add(lt.name)
         for name, days, carry, max_days in leave_types_data:
             if name not in existing_names:
-                db.add(LeaveType(name=name, days_per_year=days, carry_forward=carry, max_consecutive_days=max_days))
+                db.add(
+                    LeaveType(
+                        name=name,
+                        days_per_year=days,
+                        carry_forward=carry,
+                        max_consecutive_days=max_days,
+                    )
+                )
         await db.flush()
         print("Leave types seeded.")
         lt_result = await db.execute(select(LeaveType))
         leave_types = {lt.name: lt for lt in lt_result.scalars().all()}
         if not leave_types:
-            raise RuntimeError("No leave types found. Start backend first to auto-seed them.")
+            raise RuntimeError(
+                "No leave types found. Start backend first to auto-seed them."
+            )
 
         # ── Users ───────────────────────────────────────────────────
         users_data = [
-            {"name": "Admin User",      "email": "admin@hr.com",        "role": "admin",    "dept": None,       "image": "https://example.com/avatars/admin.png"},
-            {"name": "Alice HR",        "email": "alice_hr@test.com",   "role": "hr",        "dept": "HR",        "image": "https://example.com/avatars/alice.png"},
-            {"name": "Mike Manager",    "email": "mike_mgr@test.com",   "role": "manager",   "dept": "Engineering", "image": "https://example.com/avatars/mike.png"},
-            {"name": "Bob Employee",    "email": "bob_emp@test.com",    "role": "employee",  "dept": "Engineering", "image": None},
-            {"name": "Charlie Employee", "email": "charlie_emp@test.com", "role": "employee",  "dept": "Engineering", "image": None},
-            {"name": "Diana Employee",  "email": "diana_emp@test.com",  "role": "employee",  "dept": "HR",        "image": None},
-            {"name": "Eve Marketing",   "email": "eve_mktg@test.com",   "role": "employee",  "dept": "Marketing", "image": "https://example.com/avatars/eve.png"},
-            {"name": "Frank Finance",   "email": "frank_fin@test.com",  "role": "employee",  "dept": "Finance",   "image": None},
+            {
+                "name": "Admin User",
+                "email": "admin@hr.com",
+                "role": "admin",
+                "dept": None,
+                "image": "https://example.com/avatars/admin.png",
+            },
+            {
+                "name": "Alice HR",
+                "email": "alice_hr@test.com",
+                "role": "hr",
+                "dept": "HR",
+                "image": "https://example.com/avatars/alice.png",
+            },
+            {
+                "name": "Mike Manager",
+                "email": "mike_mgr@test.com",
+                "role": "manager",
+                "dept": "Engineering",
+                "image": "https://example.com/avatars/mike.png",
+            },
+            {
+                "name": "Bob Employee",
+                "email": "bob_emp@test.com",
+                "role": "employee",
+                "dept": "Engineering",
+                "image": None,
+            },
+            {
+                "name": "Charlie Employee",
+                "email": "charlie_emp@test.com",
+                "role": "employee",
+                "dept": "Engineering",
+                "image": None,
+            },
+            {
+                "name": "Diana Employee",
+                "email": "diana_emp@test.com",
+                "role": "employee",
+                "dept": "HR",
+                "image": None,
+            },
+            {
+                "name": "Eve Marketing",
+                "email": "eve_mktg@test.com",
+                "role": "employee",
+                "dept": "Marketing",
+                "image": "https://example.com/avatars/eve.png",
+            },
+            {
+                "name": "Frank Finance",
+                "email": "frank_fin@test.com",
+                "role": "employee",
+                "dept": "Finance",
+                "image": None,
+            },
         ]
 
         all_users = []
@@ -87,7 +164,8 @@ async def main():
                     profile_image=ud["image"],
                     is_active=True,
                     department_id=depts.get(ud["dept"]).id if ud.get("dept") else None,
-                    created_at=datetime(2024, 1, 1, tzinfo=timezone.utc) + timedelta(days=i),
+                    created_at=datetime(2024, 1, 1, tzinfo=timezone.utc)
+                    + timedelta(days=i),
                 )
                 db.add(u)
                 await db.flush()
@@ -98,7 +176,9 @@ async def main():
         # ── Department heads ─────────────────────────────────────────
         depts["Engineering"].head_user_id = existing_users["manager"].id
         depts["HR"].head_user_id = existing_users["hr"].id
-        depts["Marketing"].head_user_id = existing_users.get("employee", all_users[6]).id
+        depts["Marketing"].head_user_id = existing_users.get(
+            "employee", all_users[6]
+        ).id
         depts["Finance"].head_user_id = existing_users.get("employee", all_users[7]).id
         await db.flush()
         print("Department heads assigned.")
@@ -116,23 +196,42 @@ async def main():
                     )
                 )
                 if not res.scalar_one_or_none():
-                    used = random.randint(0, max(0, lt.days_per_year - 5)) if lt.days_per_year > 0 else 0
-                    db.add(LeaveBalance(
-                        user_id=user.id,
-                        leave_type_id=lt.id,
-                        year=date.today().year,
-                        total_days=lt.days_per_year,
-                        used_days=used,
-                        remaining_days=lt.days_per_year - used,
-                    ))
+                    used = (
+                        random.randint(0, max(0, lt.days_per_year - 5))
+                        if lt.days_per_year > 0
+                        else 0
+                    )
+                    db.add(
+                        LeaveBalance(
+                            user_id=user.id,
+                            leave_type_id=lt.id,
+                            year=date.today().year,
+                            total_days=lt.days_per_year,
+                            used_days=used,
+                            remaining_days=lt.days_per_year - used,
+                        )
+                    )
         await db.flush()
         print("Leave balances seeded.")
 
         # ── Attendance (last 30 days) ───────────────────────────────
         today = date.today()
-        statuses = ["present", "present", "present", "present", "present", "late", "late", "half_day", "wfh", "absent"]
+        statuses = [
+            "present",
+            "present",
+            "present",
+            "present",
+            "present",
+            "late",
+            "late",
+            "half_day",
+            "wfh",
+            "absent",
+        ]
         attendance_notes_pool = [
-            None, None, None,
+            None,
+            None,
+            None,
             "Arrived on time, productive day",
             "Completed sprint tasks ahead of schedule",
             "Had a team meeting in the morning",
@@ -164,19 +263,32 @@ async def main():
                 if status != "absent":
                     hour = 8 if random.random() > 0.3 else random.choice([9, 9, 10])
                     minute = random.randint(0, 59)
-                    check_in = datetime(d.year, d.month, d.day, hour, minute, tzinfo=timezone.utc)
+                    check_in = datetime(
+                        d.year, d.month, d.day, hour, minute, tzinfo=timezone.utc
+                    )
                     out_hour = hour + 8 + random.choice([0, 0, 1])
-                    check_out = datetime(d.year, d.month, d.day, out_hour, random.randint(0, 59), tzinfo=timezone.utc)
+                    check_out = datetime(
+                        d.year,
+                        d.month,
+                        d.day,
+                        out_hour,
+                        random.randint(0, 59),
+                        tzinfo=timezone.utc,
+                    )
 
-                db.add(Attendance(
-                    user_id=user.id,
-                    date=d,
-                    check_in=check_in,
-                    check_out=check_out,
-                    status=status,
-                    notes=random.choice(attendance_notes_pool),
-                    created_at=datetime(d.year, d.month, d.day, 23, 0, 0, tzinfo=timezone.utc),
-                ))
+                db.add(
+                    Attendance(
+                        user_id=user.id,
+                        date=d,
+                        check_in=check_in,
+                        check_out=check_out,
+                        status=status,
+                        notes=random.choice(attendance_notes_pool),
+                        created_at=datetime(
+                            d.year, d.month, d.day, 23, 0, 0, tzinfo=timezone.utc
+                        ),
+                    )
+                )
         await db.flush()
         print("Attendance records seeded.")
 
@@ -198,18 +310,36 @@ async def main():
                     continue
 
                 titles = [
-                    "Worked on feature X", "Bug fixes", "Code review",
-                    "Client meeting", "Documentation update", "Database optimization",
-                    "UI improvements", "API integration", "Testing & QA",
-                    "Sprint planning", "Team standup", "Research & learning",
-                    "Performance review preparation", "Onboarding new team member",
+                    "Worked on feature X",
+                    "Bug fixes",
+                    "Code review",
+                    "Client meeting",
+                    "Documentation update",
+                    "Database optimization",
+                    "UI improvements",
+                    "API integration",
+                    "Testing & QA",
+                    "Sprint planning",
+                    "Team standup",
+                    "Research & learning",
+                    "Performance review preparation",
+                    "Onboarding new team member",
                 ]
                 tags_pool = [
-                    ["frontend", "react"], ["backend", "api"], ["bugfix"],
-                    ["meeting", "client"], ["docs"], ["database"],
-                    ["ui", "ux"], ["integration"], ["testing"],
-                    ["planning"], ["standup"], ["research"],
-                    ["performance"], ["onboarding"],
+                    ["frontend", "react"],
+                    ["backend", "api"],
+                    ["bugfix"],
+                    ["meeting", "client"],
+                    ["docs"],
+                    ["database"],
+                    ["ui", "ux"],
+                    ["integration"],
+                    ["testing"],
+                    ["planning"],
+                    ["standup"],
+                    ["research"],
+                    ["performance"],
+                    ["onboarding"],
                 ]
                 descriptions = [
                     "Spent the day on {}. [Dummy data for testing]",
@@ -219,15 +349,21 @@ async def main():
                 ]
                 random_dept = random.choice(list(depts.keys()))
                 idx = random.randrange(len(titles))
-                db.add(WorkUpdate(
-                    user_id=user.id,
-                    title=titles[idx],
-                    description=random.choice(descriptions).format(titles[idx].lower()),
-                    date=d,
-                    department=random_dept,
-                    tags=tags_pool[idx],
-                    created_at=datetime(d.year, d.month, d.day, 17, 0, 0, tzinfo=timezone.utc),
-                ))
+                db.add(
+                    WorkUpdate(
+                        user_id=user.id,
+                        title=titles[idx],
+                        description=random.choice(descriptions).format(
+                            titles[idx].lower()
+                        ),
+                        date=d,
+                        department=random_dept,
+                        tags=tags_pool[idx],
+                        created_at=datetime(
+                            d.year, d.month, d.day, 17, 0, 0, tzinfo=timezone.utc
+                        ),
+                    )
+                )
         await db.flush()
         print("Work updates seeded.")
 
@@ -251,12 +387,14 @@ async def main():
                 approver = alice.id if random.random() > 0.5 else mike.id
             elif status == "rejected":
                 approver = mike.id
-                rejection_reason = random.choice([
-                    "Needs more detail",
-                    "Team has limited coverage that week",
-                    "Please reschedule after project deadline",
-                    "Insufficient leave balance",
-                ])
+                rejection_reason = random.choice(
+                    [
+                        "Needs more detail",
+                        "Team has limited coverage that week",
+                        "Please reschedule after project deadline",
+                        "Insufficient leave balance",
+                    ]
+                )
 
             res = await db.execute(
                 select(LeaveRequest).where(
@@ -274,19 +412,37 @@ async def main():
                 f"Medical appointment scheduled. {lt.name} leave. [Seed]",
             ]
 
-            db.add(LeaveRequest(
-                applicant_id=user.id,
-                approver_id=approver,
-                leave_type_id=lt.id,
-                from_date=from_d,
-                to_date=to_d,
-                business_days=(to_d - from_d).days + 1,
-                reason=random.choice(leave_reasons),
-                status=status,
-                rejection_reason=rejection_reason,
-                created_at=datetime(today.year, today.month, today.day, 10, 0, 0, tzinfo=timezone.utc),
-                updated_at=datetime(today.year, today.month, today.day, 14, 0, 0, tzinfo=timezone.utc),
-            ))
+            db.add(
+                LeaveRequest(
+                    applicant_id=user.id,
+                    approver_id=approver,
+                    leave_type_id=lt.id,
+                    from_date=from_d,
+                    to_date=to_d,
+                    business_days=(to_d - from_d).days + 1,
+                    reason=random.choice(leave_reasons),
+                    status=status,
+                    rejection_reason=rejection_reason,
+                    created_at=datetime(
+                        today.year,
+                        today.month,
+                        today.day,
+                        10,
+                        0,
+                        0,
+                        tzinfo=timezone.utc,
+                    ),
+                    updated_at=datetime(
+                        today.year,
+                        today.month,
+                        today.day,
+                        14,
+                        0,
+                        0,
+                        tzinfo=timezone.utc,
+                    ),
+                )
+            )
         await db.flush()
         print("Leave requests seeded.")
 
@@ -313,17 +469,23 @@ async def main():
             },
         ]
         for i, r in enumerate(sample_roles):
-            res = await db.execute(select(CompanyRole).where(CompanyRole.title == r["title"]))
+            res = await db.execute(
+                select(CompanyRole).where(CompanyRole.title == r["title"])
+            )
             if not res.scalar_one_or_none():
-                db.add(CompanyRole(
-                    title=r["title"],
-                    description=r["desc"],
-                    responsibilities=r["resp"],
-                    required_skills=r["skills"],
-                    created_by=admin_user.id,
-                    created_at=datetime(2024, 6, 1, tzinfo=timezone.utc) + timedelta(hours=i),
-                    updated_at=datetime(2024, 6, 1, tzinfo=timezone.utc) + timedelta(hours=i + 1),
-                ))
+                db.add(
+                    CompanyRole(
+                        title=r["title"],
+                        description=r["desc"],
+                        responsibilities=r["resp"],
+                        required_skills=r["skills"],
+                        created_by=admin_user.id,
+                        created_at=datetime(2024, 6, 1, tzinfo=timezone.utc)
+                        + timedelta(hours=i),
+                        updated_at=datetime(2024, 6, 1, tzinfo=timezone.utc)
+                        + timedelta(hours=i + 1),
+                    )
+                )
         print("Company roles seeded.")
 
         # ── Company Rules ────────────────────────────────────────────
@@ -345,41 +507,67 @@ async def main():
             },
         ]
         for i, r in enumerate(sample_rules):
-            res = await db.execute(select(CompanyRule).where(CompanyRule.title == r["title"]))
+            res = await db.execute(
+                select(CompanyRule).where(CompanyRule.title == r["title"])
+            )
             if not res.scalar_one_or_none():
-                db.add(CompanyRule(
-                    title=r["title"],
-                    content=r["content"],
-                    category=r["category"],
-                    created_by=admin_user.id,
-                    is_active=True,
-                    created_at=datetime(2024, 6, 1, tzinfo=timezone.utc) + timedelta(hours=i),
-                    updated_at=datetime(2024, 6, 1, tzinfo=timezone.utc) + timedelta(hours=i + 1),
-                ))
+                db.add(
+                    CompanyRule(
+                        title=r["title"],
+                        content=r["content"],
+                        category=r["category"],
+                        created_by=admin_user.id,
+                        is_active=True,
+                        created_at=datetime(2024, 6, 1, tzinfo=timezone.utc)
+                        + timedelta(hours=i),
+                        updated_at=datetime(2024, 6, 1, tzinfo=timezone.utc)
+                        + timedelta(hours=i + 1),
+                    )
+                )
         print("Company rules seeded.")
 
         # ── Chat Sessions & Messages ─────────────────────────────────
         user_chat_messages = {
             "employee": [
                 ("user", "What is the WFH policy?"),
-                ("assistant", "Employees may work from home up to 2 days per week with manager approval. All WFH days must be recorded in the attendance system."),
+                (
+                    "assistant",
+                    "Employees may work from home up to 2 days per week with manager approval. All WFH days must be recorded in the attendance system.",
+                ),
                 ("user", "How do I apply for leave?"),
-                ("assistant", "You can apply for leave through the Leave section. Requests should be submitted at least 3 business days in advance."),
+                (
+                    "assistant",
+                    "You can apply for leave through the Leave section. Requests should be submitted at least 3 business days in advance.",
+                ),
             ],
             "hr": [
                 ("user", "Show me attendance reports for this month"),
-                ("assistant", "Here is the attendance summary for this month. All employees have consistent records with minimal absences."),
+                (
+                    "assistant",
+                    "Here is the attendance summary for this month. All employees have consistent records with minimal absences.",
+                ),
                 ("user", "How many employees are on leave today?"),
-                ("assistant", "There are currently 2 employees on approved leave today."),
+                (
+                    "assistant",
+                    "There are currently 2 employees on approved leave today.",
+                ),
             ],
         }
 
-        chat_created_at = datetime(today.year, today.month, today.day, 9, 0, 0, tzinfo=timezone.utc)
+        chat_created_at = datetime(
+            today.year, today.month, today.day, 9, 0, 0, tzinfo=timezone.utc
+        )
         for role_key, role_user in existing_users.items():
             if role_key == "admin":
                 continue
-            messages_list = user_chat_messages.get(role_key, user_chat_messages["employee"])
-            session_title = "HR Policy Questions" if role_key == "employee" else "Dashboard Overview"
+            messages_list = user_chat_messages.get(
+                role_key, user_chat_messages["employee"]
+            )
+            session_title = (
+                "HR Policy Questions"
+                if role_key == "employee"
+                else "Dashboard Overview"
+            )
 
             cs = ChatSession(
                 user_id=role_user.id,
@@ -397,13 +585,15 @@ async def main():
                         {"source": "Work from Home Policy", "url": "/rules/1"},
                         {"source": "Company Handbook v2.1", "url": "/docs/handbook"},
                     ]
-                db.add(ChatMessage(
-                    session_id=cs.id,
-                    role=msg_role,
-                    content=msg_content,
-                    citations=citations,
-                    created_at=cs.created_at + timedelta(minutes=5 * j),
-                ))
+                db.add(
+                    ChatMessage(
+                        session_id=cs.id,
+                        role=msg_role,
+                        content=msg_content,
+                        citations=citations,
+                        created_at=cs.created_at + timedelta(minutes=5 * j),
+                    )
+                )
         await db.flush()
         print("Chat sessions & messages seeded.")
 
@@ -424,15 +614,26 @@ async def main():
 
         for i, feedback_user in enumerate(all_users[:4]):
             session_id_str = f"session_{feedback_user.id.hex[:8]}"
-            db.add(ChatFeedback(
-                user_id=feedback_user.id,
-                session_id=session_id_str,
-                query=feedback_queries[i],
-                response=feedback_responses[i],
-                rating=random.choice([True, True, False]),
-                feedback_text=random.choice(feedback_texts),
-                created_at=datetime(today.year, today.month, today.day, 11, 0, 0, tzinfo=timezone.utc) + timedelta(hours=i),
-            ))
+            db.add(
+                ChatFeedback(
+                    user_id=feedback_user.id,
+                    session_id=session_id_str,
+                    query=feedback_queries[i],
+                    response=feedback_responses[i],
+                    rating=random.choice([True, True, False]),
+                    feedback_text=random.choice(feedback_texts),
+                    created_at=datetime(
+                        today.year,
+                        today.month,
+                        today.day,
+                        11,
+                        0,
+                        0,
+                        tzinfo=timezone.utc,
+                    )
+                    + timedelta(hours=i),
+                )
+            )
         await db.flush()
         print("Chat feedback seeded.")
 

@@ -11,6 +11,8 @@ from app.db.base import Base
 
 
 class User(Base):
+    """Registered system user with role-based access control."""
+
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -37,5 +39,10 @@ class User(Base):
         default=lambda: datetime.now(timezone.utc),
     )
 
-    department = relationship("Department", back_populates="users", lazy="selectin", foreign_keys="[User.department_id]")
+    department = relationship(
+        "Department",
+        back_populates="users",
+        lazy="selectin",
+        foreign_keys="[User.department_id]",
+    )
     work_updates = relationship("WorkUpdate", back_populates="user", lazy="selectin")

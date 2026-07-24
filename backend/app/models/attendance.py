@@ -11,6 +11,8 @@ from app.db.base import Base
 
 
 class Attendance(Base):
+    """Daily attendance record with check-in/out times and status."""
+
     __tablename__ = "attendances"
 
     id: Mapped[uuid.UUID] = mapped_column(

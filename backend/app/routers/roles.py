@@ -1,9 +1,23 @@
+"""Company role management routes.
+
+Provides endpoints for creating, updating, listing, and deleting
+job roles, including document upload and LLM-assisted parsing.
+"""
+
 from __future__ import annotations
 
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status, BackgroundTasks
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,7 +48,9 @@ async def upload_role_doc(
     background_tasks: BackgroundTasks = None,
 ):
     """Upload a .docx or .pdf file, parse it, and create a company role."""
-    if not file.filename or not (file.filename.endswith(".docx") or file.filename.endswith(".pdf")):
+    if not file.filename or not (
+        file.filename.endswith(".docx") or file.filename.endswith(".pdf")
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only .docx and .pdf files are supported",
@@ -154,9 +170,7 @@ async def update_role(
     background_tasks: BackgroundTasks = None,
 ):
     """Update a company role."""
-    result = await db.execute(
-        select(CompanyRole).where(CompanyRole.id == role_id)
-    )
+    result = await db.execute(select(CompanyRole).where(CompanyRole.id == role_id))
     role = result.scalar_one_or_none()
     if not role:
         raise HTTPException(
@@ -201,9 +215,7 @@ async def delete_role(
     current_user: User = Depends(require_role("admin", "manager", "hr")),
 ):
     """Delete a company role."""
-    result = await db.execute(
-        select(CompanyRole).where(CompanyRole.id == role_id)
-    )
+    result = await db.execute(select(CompanyRole).where(CompanyRole.id == role_id))
     role = result.scalar_one_or_none()
     if not role:
         raise HTTPException(
@@ -214,6 +226,7 @@ async def delete_role(
     await db.flush()
     try:
         from app.ai.embeddings import delete_embeddings
+
         delete_embeddings(str(role_id))
     except Exception:
         pass

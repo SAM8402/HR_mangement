@@ -3,8 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import (Boolean, Date, DateTime, Enum, ForeignKey, Integer,
-                        String, Text)
+from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -12,6 +11,8 @@ from app.db.base import Base
 
 
 class LeaveType(Base):
+    """Leave category with annual allocation and carry-forward rules."""
+
     __tablename__ = "leave_types"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -37,6 +38,8 @@ class LeaveType(Base):
 
 
 class LeaveBalance(Base):
+    """Per-user, per-year, per-leave-type balance tracking remaining days."""
+
     __tablename__ = "leave_balances"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -55,6 +58,8 @@ class LeaveBalance(Base):
 
 
 class LeaveRequest(Base):
+    """Leave application with applicant, approver, date range, status, and reason."""
+
     __tablename__ = "leave_requests"
 
     id: Mapped[uuid.UUID] = mapped_column(

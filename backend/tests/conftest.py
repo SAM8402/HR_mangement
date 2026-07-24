@@ -1,16 +1,23 @@
+"""Test fixtures and configuration.
+
+Sets up an in-memory SQLite database, seeded users, leave balances,
+and mocked Redis / Gemini / Chroma for offline test execution.
+"""
+
 from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncGenerator
+
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.main import app
-from app.db.base import Base
 from app.core.dependencies import get_db
 from app.core.security import hash_password
+from app.db.base import Base
+from app.main import app
 from app.models.user import User
 from app.services.cache_service import cache_service
 
@@ -40,14 +47,17 @@ async def db_engine():
 async def db_session(db_engine, monkeypatch) -> AsyncGenerator[AsyncSession, None]:
     connection = await db_engine.connect()
     transaction = await connection.begin()
-    session_maker = async_sessionmaker(connection, class_=AsyncSession, expire_on_commit=False)
-    
-    import app.db.session
+    session_maker = async_sessionmaker(
+        connection, class_=AsyncSession, expire_on_commit=False
+    )
+
     import app.ai.tools
+    import app.db.session
+
     monkeypatch.setattr(app.db.session, "async_session", session_maker)
     monkeypatch.setattr(app.db.session, "engine", db_engine)
     monkeypatch.setattr(app.ai.tools, "async_session", session_maker)
-    
+
     session = session_maker()
 
     yield session
@@ -60,20 +70,27 @@ async def db_session(db_engine, monkeypatch) -> AsyncGenerator[AsyncSession, Non
 @pytest_asyncio.fixture(autouse=True)
 async def mock_redis(monkeypatch):
     """Mock Redis client in CacheService to prevent actual network calls."""
+
     class MockRedis:
         def __init__(self):
             self.store = {}
+
         async def get(self, key):
             return self.store.get(key)
+
         async def set(self, key, val, ex=None):
             self.store[key] = val
+
         async def delete(self, *keys):
             for k in keys:
                 self.store.pop(k, None)
+
         async def close(self):
             pass
+
         def scan_iter(self, match=None):
             import fnmatch
+
             for k in list(self.store.keys()):
                 if match is None or fnmatch.fnmatch(k, match):
                     yield k
@@ -88,23 +105,24 @@ async def mock_redis(monkeypatch):
 @pytest_asyncio.fixture
 async def client(db_session) -> AsyncGenerator[AsyncClient, None]:
     """Test client overriding the db dependency."""
+
     async def override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
-    
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
-        
+
     app.dependency_overrides.clear()
 
 
 @pytest_asyncio.fixture
 async def test_users(db_session):
     """Seed default users, leave types, and leave balances."""
-    from app.models.leave import LeaveType, LeaveBalance
-    
+    from app.models.leave import LeaveBalance, LeaveType
+
     # 1. Seed leave types
     leave_types = {
         "casual": {"days": 18, "carry": False, "max": 5},
@@ -126,8 +144,9 @@ async def test_users(db_session):
 
     # 2. Seed departments and users
     from datetime import date
+
     from app.models.department import Department
-    
+
     dept = Department(name="Engineering")
     db_session.add(dept)
     await db_session.flush()

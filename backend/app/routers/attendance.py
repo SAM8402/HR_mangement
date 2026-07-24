@@ -1,3 +1,9 @@
+"""Attendance tracking routes.
+
+Provides endpoints for marking attendance, checking today's status,
+and generating monthly or yearly reports.
+"""
+
 from __future__ import annotations
 
 import uuid
@@ -9,10 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_current_user, require_role
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.attendance import (AttendanceMarkRequest,
-                                    AttendanceReportResponse,
-                                    AttendanceResponse,
-                                    AttendanceStatusResponse)
+from app.schemas.attendance import (
+    AttendanceMarkRequest,
+    AttendanceReportResponse,
+    AttendanceResponse,
+    AttendanceStatusResponse,
+)
 from app.services.attendance_service import AttendanceService
 
 router = APIRouter(prefix="/api/attendance", tags=["attendance"])
@@ -25,11 +33,16 @@ async def _resolve_user_id(
     if user_id is None:
         return current_user.id
     if current_user.role not in ("admin", "manager", "hr"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view other users")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view other users",
+        )
     return user_id
 
 
-@router.post("/mark", response_model=AttendanceResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/mark", response_model=AttendanceResponse, status_code=status.HTTP_201_CREATED
+)
 async def mark_attendance(
     data: AttendanceMarkRequest,
     db: AsyncSession = Depends(get_db),
@@ -50,7 +63,9 @@ async def today_status(
     target_id = await _resolve_user_id(user_id, current_user)
     record = await AttendanceService.get_today_status(db, target_id)
     if not record:
-        return AttendanceStatusResponse(date=date.today(), check_in=None, status="not_marked", notes=None)
+        return AttendanceStatusResponse(
+            date=date.today(), check_in=None, status="not_marked", notes=None
+        )
     return AttendanceStatusResponse(
         id=record.id,
         date=record.date,
