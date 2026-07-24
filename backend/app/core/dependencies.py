@@ -7,6 +7,7 @@ and database session management in route handlers.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Annotated, Callable
 
@@ -18,6 +19,8 @@ from app.core.security import verify_token
 from app.db.session import get_db
 from app.models.user import User
 
+logger = logging.getLogger(__name__)
+
 
 async def get_current_user(
     authorization: Annotated[str | None, Header()] = None,
@@ -26,8 +29,10 @@ async def get_current_user(
 ) -> User:
     """Extract and validate the current user from the Authorization header or token query param."""
     parsed_token = None
+    auth_source = "cookie"
     if authorization and authorization.startswith("Bearer "):
         parsed_token = authorization.split(" ", 1)[1]
+        auth_source = "Bearer token"
     elif token:
         parsed_token = token
 
@@ -40,12 +45,14 @@ async def get_current_user(
     try:
         payload = verify_token(parsed_token)
     except ValueError:
+        logger.warning("Authentication failed: invalid or expired token")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
         )
 
     if payload.get("type") != "access":
+        logger.warning("Authentication failed: invalid token type")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token type",
@@ -62,11 +69,13 @@ async def get_current_user(
     user = result.scalar_one_or_none()
 
     if not user or not user.is_active:
+        logger.warning("Authentication failed: user %s not found or inactive", user_id)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
         )
 
+    logger.info("Authenticated user %s via %s", user.email, auth_source)
     return user
 
 

@@ -6,6 +6,7 @@ job roles, including document upload and LLM-assisted parsing.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Optional
 
@@ -20,6 +21,8 @@ from fastapi import (
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from app.core.dependencies import get_current_user, require_role
 from app.db.session import get_db
@@ -110,7 +113,9 @@ async def list_roles(
     result = await db.execute(
         select(CompanyRole).order_by(CompanyRole.created_at.desc())
     )
-    return list(result.scalars().all())
+    roles = list(result.scalars().all())
+    logger.info("Roles list fetched (%d roles)", len(roles))
+    return roles
 
 
 @router.post(
@@ -135,6 +140,7 @@ async def create_role(
     db.add(role)
     await db.flush()
     await db.refresh(role)
+    logger.info("Role %s created by user %s", role.id, current_user.id)
 
     # Embed for RAG in background
     if background_tasks:
@@ -182,6 +188,7 @@ async def update_role(
 
     await db.flush()
     await db.refresh(role)
+    logger.info("Role %s updated by user %s", role_id, current_user.id)
 
     # Re-embed in background
     if background_tasks:
@@ -230,4 +237,5 @@ async def delete_role(
         delete_embeddings(str(role_id))
     except Exception:
         pass
+    logger.info("Role %s deleted by user %s", role_id, current_user.id)
     return {"message": f"Role '{role.title}' deleted"}

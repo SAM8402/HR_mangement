@@ -6,10 +6,13 @@ leave requests, and querying leave balances.
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from app.core.dependencies import get_current_user, require_role
 from app.db.session import get_db
@@ -40,6 +43,12 @@ async def apply_leave(
     try:
         leave = await LeaveService.apply_leave(db, current_user.id, data)
         await cache_service.invalidate_leave_balance(str(current_user.id))
+        logger.info(
+            "Leave applied by user %s (type: %s, days: %s)",
+            current_user.id,
+            data.leave_type_id,
+            data.days,
+        )
         return leave
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -51,6 +60,7 @@ async def my_leaves(
     current_user: User = Depends(get_current_user),
 ):
     """Get my leave history."""
+    logger.info("Leave requests list fetched for user %s", current_user.id)
     return await LeaveService.get_my_leaves(db, current_user.id)
 
 
@@ -67,6 +77,7 @@ async def my_balance(
 
     balances = await LeaveService.get_balance(db, current_user.id)
     await cache_service.set_leave_balance(user_id, balances)
+    logger.info("Leave balance fetched for user %s", current_user.id)
     return balances
 
 
@@ -89,6 +100,7 @@ async def approve_leave(
     try:
         leave = await LeaveService.approve_leave(db, leave_id, current_user.id)
         await cache_service.invalidate_leave_balance(str(leave.applicant_id))
+        logger.info("Leave %s approved by user %s", leave_id, current_user.id)
         return leave
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -103,9 +115,11 @@ async def reject_leave(
 ):
     """Reject a leave request."""
     try:
-        return await LeaveService.reject_leave(
+        result = await LeaveService.reject_leave(
             db, leave_id, current_user.id, data.rejection_reason
         )
+        logger.info("Leave %s rejected by user %s", leave_id, current_user.id)
+        return result
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -120,6 +134,7 @@ async def cancel_leave(
     try:
         leave = await LeaveService.cancel_leave(db, leave_id, current_user.id)
         await cache_service.invalidate_leave_balance(str(current_user.id))
+        logger.info("Leave %s cancelled by user %s", leave_id, current_user.id)
         return leave
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

@@ -5,9 +5,13 @@ Provides a single endpoint for retrieving all department names.
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from app.core.dependencies import get_current_user
 from app.db.session import get_db
@@ -24,4 +28,5 @@ async def list_departments(
 ):
     result = await db.execute(select(Department.name).order_by(Department.name))
     names = [row[0] for row in result.all()]
+    logger.info("Departments list fetched (%d departments)", len(names))
     return names

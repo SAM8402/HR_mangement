@@ -8,6 +8,7 @@ All users share the password "12345678".
 """
 
 import asyncio
+import logging
 import random
 from datetime import date, datetime, timedelta, timezone
 
@@ -31,12 +32,14 @@ from app.models import (
     WorkUpdate,
 )
 
+logger = logging.getLogger(__name__)
+
 
 async def main():
-    print("Creating tables...")
+    logger.info("Creating tables...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    print("Connecting to database...")
+    logger.info("Connecting to database...")
     async with async_session() as db:
         # ── Departments ──────────────────────────────────────────────
         dept_result = await db.execute(select(Department))
@@ -55,7 +58,7 @@ async def main():
             depts["Finance"] = Department(name="Finance")
             db.add(depts["Finance"])
         await db.flush()
-        print("Departments ready.")
+        logger.info("Departments ready.")
 
         # ── Leave Types ──────────────────────────────────────────────
         leave_types_data = [
@@ -80,7 +83,7 @@ async def main():
                     )
                 )
         await db.flush()
-        print("Leave types seeded.")
+        logger.info("Leave types seeded.")
         lt_result = await db.execute(select(LeaveType))
         leave_types = {lt.name: lt for lt in lt_result.scalars().all()}
         if not leave_types:
@@ -169,7 +172,7 @@ async def main():
                 )
                 db.add(u)
                 await db.flush()
-                print(f"  Created {ud['role']}: {ud['name']} ({ud['email']})")
+                logger.info("Created %s: %s (%s)", ud["role"], ud["name"], ud["email"])
             existing_users[ud["role"]] = u
             all_users.append(u)
 
@@ -181,7 +184,7 @@ async def main():
         ).id
         depts["Finance"].head_user_id = existing_users.get("employee", all_users[7]).id
         await db.flush()
-        print("Department heads assigned.")
+        logger.info("Department heads assigned.")
 
         # ── Leave Balances ──────────────────────────────────────────
         for user in all_users:
@@ -212,7 +215,7 @@ async def main():
                         )
                     )
         await db.flush()
-        print("Leave balances seeded.")
+        logger.info("Leave balances seeded.")
 
         # ── Attendance (last 30 days) ───────────────────────────────
         today = date.today()
@@ -290,7 +293,7 @@ async def main():
                     )
                 )
         await db.flush()
-        print("Attendance records seeded.")
+        logger.info("Attendance records seeded.")
 
         # ── Work Updates (last 2 weeks) ─────────────────────────────
         for user in all_users:
@@ -365,7 +368,7 @@ async def main():
                     )
                 )
         await db.flush()
-        print("Work updates seeded.")
+        logger.info("Work updates seeded.")
 
         # ── Leave Requests ──────────────────────────────────────────
         alice = existing_users.get("hr")
@@ -444,7 +447,7 @@ async def main():
                 )
             )
         await db.flush()
-        print("Leave requests seeded.")
+        logger.info("Leave requests seeded.")
 
         # ── Company Roles ────────────────────────────────────────────
         admin_user = existing_users.get("admin")
@@ -486,7 +489,7 @@ async def main():
                         + timedelta(hours=i + 1),
                     )
                 )
-        print("Company roles seeded.")
+        logger.info("Company roles seeded.")
 
         # ── Company Rules ────────────────────────────────────────────
         sample_rules = [
@@ -524,7 +527,7 @@ async def main():
                         + timedelta(hours=i + 1),
                     )
                 )
-        print("Company rules seeded.")
+        logger.info("Company rules seeded.")
 
         # ── Chat Sessions & Messages ─────────────────────────────────
         user_chat_messages = {
@@ -595,7 +598,7 @@ async def main():
                     )
                 )
         await db.flush()
-        print("Chat sessions & messages seeded.")
+        logger.info("Chat sessions & messages seeded.")
 
         # ── Chat Feedback ────────────────────────────────────────────
         feedback_queries = [
@@ -635,14 +638,14 @@ async def main():
                 )
             )
         await db.flush()
-        print("Chat feedback seeded.")
+        logger.info("Chat feedback seeded.")
 
         # ── Commit ──────────────────────────────────────────────────
         await db.commit()
-        print("\nAll dummy data seeded successfully!")
-        print("Users & passwords:")
+        logger.info("All dummy data seeded successfully!")
+        logger.info("Users & passwords:")
         for ud in users_data:
-            print(f"  {ud['email']} / 12345678")
+            logger.info("  %s / 12345678", ud["email"])
 
 
 if __name__ == "__main__":

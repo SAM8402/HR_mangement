@@ -6,12 +6,15 @@ users with role-based access control.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from app.core.dependencies import get_current_user, require_role
 from app.core.security import hash_password
@@ -59,6 +62,7 @@ async def list_users(
     """List all users (admin/manager/hr only)."""
     result = await db.execute(select(User).order_by(User.created_at.desc()))
     users = result.scalars().all()
+    logger.info("Users list fetched (%d users)", len(users))
     return UserListResponse(
         users=[UserResponse.model_validate(u) for u in users],
         total=len(users),
@@ -96,6 +100,7 @@ async def create_user(
     await _create_leave_balances(db, user.id, data.joining_date.year)
     await db.flush()
     await db.refresh(user)
+    logger.info("User %s created by user %s", user.id, current_user.id)
     return user
 
 
@@ -141,6 +146,7 @@ async def update_user(
 
     await db.flush()
     await db.refresh(user)
+    logger.info("User %s updated by user %s", user_id, current_user.id)
     return user
 
 
@@ -191,4 +197,5 @@ async def deactivate_user(
 
     user.is_active = False
     await db.flush()
+    logger.info("User %s deactivated by user %s", user_id, current_user.id)
     return {"message": f"User {user.name} deactivated"}

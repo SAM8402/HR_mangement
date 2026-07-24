@@ -23,6 +23,7 @@ _vector_store: Chroma | None = None
 
 def _build_embedding_model(api_key: str) -> GoogleGenerativeAIEmbeddings:
     """Construct a Gemini embedding model instance for the given API key."""
+    logger.info("Building embedding model")
     return GoogleGenerativeAIEmbeddings(
         model="models/gemini-embedding-001",
         google_api_key=api_key,
@@ -45,6 +46,7 @@ def _rotate_embedding_key() -> bool:
     if not keys or len(keys) < 2:
         return False
     idx = (keys.index(_embedding_key) + 1) % len(keys) if _embedding_key in keys else 0
+    logger.info("Rotating to API key index %d", idx)
     _embedding_key = keys[idx]
     _embedding_model = _build_embedding_model(_embedding_key)
     return True
@@ -54,6 +56,7 @@ def get_vector_store() -> Chroma:
     """Return a singleton ChromaDB vector store, creating it on first call."""
     global _vector_store
     if _vector_store is None:
+        logger.info("Initializing vector store at %s", settings.CHROMA_PERSIST_DIR)
         _vector_store = Chroma(
             collection_name="hr_knowledge",
             embedding_function=get_embedding_model(),

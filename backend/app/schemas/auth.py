@@ -6,9 +6,12 @@ and current-user profile responses.
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from pydantic import BaseModel, EmailStr, field_validator
+
+logger = logging.getLogger(__name__)
 
 
 class LoginRequest(BaseModel):

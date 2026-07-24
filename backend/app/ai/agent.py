@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import time
 from typing import Annotated, TypedDict
@@ -29,6 +30,8 @@ from app.ai.tools import (
 )
 from app.core.config import settings
 from app.services.cache_service import cache_service
+
+logger = logging.getLogger(__name__)
 
 os.environ["GOOGLE_API_KEY"] = settings.GOOGLE_API_KEY
 
@@ -88,6 +91,7 @@ CACHE_TTL = 300  # 5 minutes
 
 async def check_combination(model: str, key: str, timeout: float = 2.0) -> bool:
     """Test whether a model+api-key combination works; caches result for 5 minutes."""
+    logger.info("Checking combination %s+%s", model, key)
     now = time.time()
     cache_key = (model, key)
     if cache_key in _combo_cache:
@@ -129,6 +133,7 @@ async def get_llm(temperature: float = 0.3):
     for model_name in fallback_models:
         if model_name != primary_model:
             for key in api_keys:
+                logger.info("Switching to fallback model %s", model_name)
                 candidates.append((model_name, key))
 
     try:
@@ -138,6 +143,12 @@ async def get_llm(temperature: float = 0.3):
         results = [True] * len(candidates)
 
     working_candidates = [candidates[i] for i, is_ok in enumerate(results) if is_ok]
+
+    logger.info(
+        "Initializing LLM with model %s using key index %d",
+        candidates[0][0],
+        next((i for i, k in enumerate(api_keys) if k == candidates[0][1]), -1),
+    )
 
     if not working_candidates:
         working_candidates = candidates
@@ -171,6 +182,7 @@ async def get_llm(temperature: float = 0.3):
 
 async def _get_llm():
     """Convenience wrapper around get_llm with a fixed 0.3 temperature."""
+    logger.info("_get_llm called")
     return await get_llm(temperature=0.3)
 
 
@@ -179,8 +191,9 @@ async def _get_llm():
 
 async def query_rewriting(state: HRAgentState) -> dict:
     """Clarify relative terms (relative dates, names) and generate alternative search queries."""
-    llm = await _get_llm()
     query = state["messages"][-1].content
+    logger.info("Processing node query_rewriting with query %s", query[:100])
+    llm = await _get_llm()
 
     rewrite_prompt = (
         "You are an AI HR assistant. Rewrite the following user query to clarify any relative time expressions "
@@ -217,10 +230,11 @@ async def query_rewriting(state: HRAgentState) -> dict:
 
 async def classify_intent(state: HRAgentState) -> dict:
     """Classify the user's query intent using the primary rewritten query."""
-    llm = await _get_llm()
     primary_query = (
         state.get("rewritten_queries", [""])[0] or state["messages"][-1].content
     )
+    logger.info("Processing node classify_intent with query %s", primary_query[:100])
+    llm = await _get_llm()
 
     classification_prompt = (
         "You are an intent classifier for an HR assistant. "
@@ -275,6 +289,7 @@ async def classify_intent(state: HRAgentState) -> dict:
 async def rag_retriever(state: HRAgentState) -> dict:
     """Search vector store using hybrid retrieval + reranking + context compression."""
     queries = state.get("rewritten_queries", [])
+    logger.info("Processing node rag_retriever with %d queries", len(queries))
     if not queries:
         queries = [state["messages"][-1].content]
 
@@ -344,6 +359,7 @@ async def rag_retriever(state: HRAgentState) -> dict:
 async def db_leave_tool_node(state: HRAgentState) -> dict:
     """Query leave data for the user."""
     user_id = state.get("user_id", "")
+    logger.info("Processing node db_leave_tool_node for user %s", user_id)
     if not user_id:
         return {
             "context": "User ID not available. Please log in to check leave balance."
@@ -355,6 +371,7 @@ async def db_leave_tool_node(state: HRAgentState) -> dict:
 async def db_work_tool_node(state: HRAgentState) -> dict:
     """Query work update data for the user."""
     user_id = state.get("user_id", "")
+    logger.info("Processing node db_work_tool_node for user %s", user_id)
     if not user_id:
         return {
             "context": "User ID not available. Please log in to check work updates."
@@ -366,6 +383,7 @@ async def db_work_tool_node(state: HRAgentState) -> dict:
 async def web_search_node(state: HRAgentState) -> dict:
     """Fallback web search when query doesn't match internal knowledge."""
     query = state.get("rewritten_queries", [""])[0] or state["messages"][-1].content
+    logger.info("Processing node web_search_node with query %s", query[:100])
     context = await web_search_tool(query)
     citations = [
         {
@@ -380,8 +398,9 @@ async def web_search_node(state: HRAgentState) -> dict:
 
 async def apply_leave_node(state: HRAgentState) -> dict:
     """Extract leave request details from query and apply for leave."""
-    llm = await _get_llm()
     query = state["messages"][-1].content
+    logger.info("Processing node apply_leave_node with query %s", query[:100])
+    llm = await _get_llm()
     user_id = state.get("user_id", "")
     if not user_id:
         return {"context": "User ID not available. Please log in to apply for leave."}
@@ -434,8 +453,9 @@ async def apply_leave_node(state: HRAgentState) -> dict:
 
 async def add_work_update_node(state: HRAgentState) -> dict:
     """Extract work update details from query and create one."""
-    llm = await _get_llm()
     query = state["messages"][-1].content
+    logger.info("Processing node add_work_update_node with query %s", query[:100])
+    llm = await _get_llm()
     user_id = state.get("user_id", "")
     if not user_id:
         return {"context": "User ID not available. Please log in to add work updates."}
@@ -488,8 +508,9 @@ async def add_work_update_node(state: HRAgentState) -> dict:
 
 async def generate_response(state: HRAgentState) -> dict:
     """Generate the final response using Gemini with retrieved context/structured data."""
-    llm = await _get_llm()
     query = state["messages"][-1].content
+    logger.info("Processing node generate_response with query %s", query[:100])
+    llm = await _get_llm()
     context = state.get("context", "")
     intent = state.get("intent", "direct")
 
@@ -552,6 +573,7 @@ async def generate_response(state: HRAgentState) -> dict:
 async def hallucination_check(state: HRAgentState) -> dict:
     """Verify if the generated response is factually grounded in the retrieved context."""
     intent = state.get("intent", "direct")
+    logger.info("Processing node hallucination_check with intent %s", intent)
     if intent not in ("rag", "web_search") or not state.get("context"):
         return {}
 

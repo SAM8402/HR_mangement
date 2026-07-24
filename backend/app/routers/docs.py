@@ -8,9 +8,12 @@ LLM-based metadata extraction.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import uuid
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from fastapi import (
     APIRouter,
@@ -68,6 +71,7 @@ async def list_role_docs(current_user: User = Depends(get_current_user)):
                     "type": "role",
                 }
             )
+    logger.info("Role document list fetched by user %s", current_user.id)
     return files
 
 
@@ -97,6 +101,7 @@ async def upload_role_doc(
     content = await file.read()
     filepath = ROLES_DIR / file.filename
     filepath.write_bytes(content)
+    logger.info("Document uploaded by user %s: %s", current_user.id, file.filename)
 
     try:
         if file.filename.endswith(".pdf"):
@@ -116,6 +121,7 @@ async def upload_role_doc(
         db.add(role)
         await db.flush()
         await db.refresh(role)
+        logger.info("Document %s processed as role", file.filename)
 
         if background_tasks:
             try:
@@ -188,6 +194,7 @@ async def list_rule_docs(current_user: User = Depends(get_current_user)):
                     "type": "rule",
                 }
             )
+    logger.info("Rule document list fetched by user %s", current_user.id)
     return files
 
 
@@ -217,6 +224,7 @@ async def upload_rule_doc(
     content = await file.read()
     filepath = RULES_DIR / file.filename
     filepath.write_bytes(content)
+    logger.info("Document uploaded by user %s: %s", current_user.id, file.filename)
 
     try:
         if file.filename.endswith(".pdf"):
@@ -285,6 +293,7 @@ async def upload_rule_doc(
             except Exception:
                 pass
 
+        logger.info("Document %s processed as rule", file.filename)
         return {
             "message": "Rule document uploaded",
             "file": file.filename,

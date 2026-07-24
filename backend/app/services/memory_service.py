@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
 import uuid
 from datetime import datetime, timezone
@@ -20,6 +21,8 @@ from sqlalchemy import desc, select
 from app.core.config import settings
 from app.db.session import async_session
 from app.models.chat_session import ChatMessage, ChatSession
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryService:
@@ -231,6 +234,7 @@ class MemoryService:
         mem_key = f"ltm:{user_id}:{key}"
         await r.set(mem_key, json.dumps(value, default=str), ex=ttl)
         await r.sadd(f"ltm:{user_id}:index", key)
+        logger.info("Storing memory for user %s: key=%s", user_id, key)
 
     async def get_long_term(self, user_id: str, key: str) -> Any | None:
         """Retrieve a persistent user fact by key."""
@@ -238,9 +242,11 @@ class MemoryService:
         raw = await r.get(f"ltm:{user_id}:{key}")
         if raw:
             try:
+                logger.info("Memory retrieved for user %s: key=%s", user_id, key)
                 return json.loads(raw)
             except json.JSONDecodeError:
                 return raw
+        logger.info("Memory not found for user %s: key=%s", user_id, key)
         return None
 
     async def get_all_long_term(self, user_id: str) -> dict[str, Any]:
@@ -259,6 +265,7 @@ class MemoryService:
         r = await self._ensure_redis()
         await r.delete(f"ltm:{user_id}:{key}")
         await r.srem(f"ltm:{user_id}:index", key)
+        logger.info("Deleting memory for user %s: key=%s", user_id, key)
 
     # ────────────────────────────────────────────────────────────────────
     # 4. Episodic Memory — past interaction summaries

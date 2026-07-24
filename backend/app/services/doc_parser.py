@@ -6,14 +6,19 @@ to extract title, description, responsibilities, and skills sections.
 
 from __future__ import annotations
 
+import logging
 from io import BytesIO
 
 from docx import Document
+
+logger = logging.getLogger(__name__)
 
 
 def parse_docx(file_content: bytes) -> dict:
     """Parse a .docx file and extract structured role information."""
     doc = Document(BytesIO(file_content))
+
+    logger.info("Parsing document with %d bytes", len(file_content))
 
     title = ""
     description = ""
@@ -65,6 +70,9 @@ def parse_docx(file_content: bytes) -> dict:
     if not description and not responsibilities:
         description = " ".join(paragraphs[1:])
 
+    logger.info(
+        "Parsed %d sections from document %s", len(paragraphs), title or "Untitled Role"
+    )
     return {
         "title": title or "Untitled Role",
         "description": description,

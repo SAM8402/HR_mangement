@@ -6,10 +6,13 @@ and report generation.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date, datetime
 
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 class AttendanceMarkRequest(BaseModel):

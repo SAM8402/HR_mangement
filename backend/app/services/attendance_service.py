@@ -6,6 +6,7 @@ report generation with status counts.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date, datetime, timezone
 
@@ -15,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.attendance import Attendance
 
 LATE_CUTOFF_HOUR = 10
+
+logger = logging.getLogger(__name__)
 
 
 class AttendanceService:
@@ -38,12 +41,14 @@ class AttendanceService:
         if existing:
             if not existing.check_out:
                 existing.check_out = datetime.now(timezone.utc)
+                logger.info("Checking out user %s", user_id)
             await db.flush()
             await db.refresh(existing)
             return existing
 
         now = datetime.now(timezone.utc)
         status = "late" if now.hour >= LATE_CUTOFF_HOUR else "present"
+        logger.info("Checking in user %s", user_id)
 
         record = Attendance(
             user_id=user_id,
@@ -55,6 +60,7 @@ class AttendanceService:
         db.add(record)
         await db.flush()
         await db.refresh(record)
+        logger.info("Check-in successful for user %s at %s", user_id, now)
         return record
 
     @staticmethod
@@ -70,7 +76,9 @@ class AttendanceService:
                 )
             )
         )
-        return result.scalar_one_or_none()
+        record = result.scalar_one_or_none()
+        logger.info("Fetching today attendance for user %s", user_id)
+        return record
 
     @staticmethod
     async def get_monthly_report(
@@ -89,6 +97,9 @@ class AttendanceService:
             .order_by(Attendance.date)
         )
         records = list(result.scalars().all())
+        logger.info(
+            "Fetching attendance for user %s from %04d-%02d", user_id, year, month
+        )
         counts = AttendanceService._compute_counts(records)
         counts["records"] = records
         return counts
@@ -109,6 +120,7 @@ class AttendanceService:
             .order_by(Attendance.date)
         )
         records = list(result.scalars().all())
+        logger.info("Fetching attendance for user %s from %04d", user_id, year)
         counts = AttendanceService._compute_counts(records)
         counts["records"] = records
         return counts

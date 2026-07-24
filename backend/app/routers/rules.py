@@ -8,6 +8,7 @@ LLM-assisted metadata extraction.
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 
 from fastapi import (
@@ -21,6 +22,8 @@ from fastapi import (
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from app.core.dependencies import get_current_user, require_role
 from app.db.session import get_db
@@ -47,7 +50,9 @@ async def list_rules(
         .where(CompanyRule.is_active == True)  # noqa: E712
         .order_by(CompanyRule.created_at.desc())
     )
-    return list(result.scalars().all())
+    rules = list(result.scalars().all())
+    logger.info("Company rules list fetched (%d rules)", len(rules))
+    return rules
 
 
 @router.post(
@@ -71,6 +76,7 @@ async def create_rule(
     db.add(rule)
     await db.flush()
     await db.refresh(rule)
+    logger.info("Rule %s created by user %s", rule.id, current_user.id)
 
     # Embed for RAG in background
     if background_tasks:
@@ -116,6 +122,7 @@ async def update_rule(
 
     await db.flush()
     await db.refresh(rule)
+    logger.info("Rule %s updated by user %s", rule_id, current_user.id)
 
     # Re-embed in background
     if background_tasks:
@@ -162,6 +169,7 @@ async def deactivate_rule(
         delete_embeddings(str(rule_id))
     except Exception:
         pass
+    logger.info("Rule %s deleted by user %s", rule_id, current_user.id)
     return {"message": f"Rule '{rule.title}' deactivated"}
 
 

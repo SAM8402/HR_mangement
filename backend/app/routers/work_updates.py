@@ -6,11 +6,14 @@ daily work logs with optional filters for date, department, and user.
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from app.core.dependencies import get_current_user, require_role
 from app.db.session import get_db
@@ -49,6 +52,7 @@ async def create_work_update(
     await db.flush()
     await db.refresh(update)
     await cache_service.invalidate_work_updates(str(current_user.id))
+    logger.info("Work update created by user %s", current_user.id)
     return update
 
 
@@ -67,7 +71,13 @@ async def my_updates(
         stmt = stmt.where(func.extract("month", WorkUpdate.date) == month)
     stmt = stmt.order_by(WorkUpdate.date.desc())
     result = await db.execute(stmt)
-    return list(result.scalars().all())
+    updates = list(result.scalars().all())
+    logger.info(
+        "Work updates list fetched for user %s (%d updates)",
+        current_user.id,
+        len(updates),
+    )
+    return updates
 
 
 @router.get("/all", response_model=list[WorkUpdateResponse])

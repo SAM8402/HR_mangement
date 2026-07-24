@@ -8,7 +8,10 @@ construction with exhausted-key filtering.
 from __future__ import annotations
 
 import json
+import logging
 from unittest.mock import AsyncMock
+
+logger = logging.getLogger(__name__)
 
 import pytest
 from httpx import AsyncClient

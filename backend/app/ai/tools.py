@@ -7,6 +7,7 @@ search, leave application, and work update creation.
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from sqlalchemy import and_, select
@@ -18,9 +19,12 @@ from app.models.leave import LeaveBalance, LeaveType
 from app.models.work_update import WorkUpdate
 from app.services.cache_service import cache_service
 
+logger = logging.getLogger(__name__)
+
 
 async def rag_tool(query: str) -> str:
     """Search the vector store and return relevant context."""
+    logger.info("rag_tool called with query: %s", query[:100])
     results = await search_similar(query, k=5)
     if not results:
         return "No relevant documents found in the knowledge base."
@@ -35,6 +39,7 @@ async def rag_tool(query: str) -> str:
 
 async def leave_balance_tool(user_id: str) -> str:
     """Query leave balances for a user."""
+    logger.info("leave_balance_tool called for user: %s", user_id)
     async with async_session() as db:
         result = await db.execute(
             select(LeaveBalance, LeaveType.name)
@@ -56,6 +61,7 @@ async def leave_balance_tool(user_id: str) -> str:
 
 async def work_updates_tool(user_id: str) -> str:
     """Query recent work updates for a user."""
+    logger.info("work_updates_tool called for user: %s", user_id)
     async with async_session() as db:
         result = await db.execute(
             select(WorkUpdate)
@@ -78,6 +84,7 @@ async def work_updates_tool(user_id: str) -> str:
 
 async def web_search_tool(query: str) -> str:
     """Fallback search on the web using DuckDuckGo."""
+    logger.info("web_search_tool called with query: %s", query[:100])
     from duckduckgo_search import DDGS
 
     try:
@@ -99,6 +106,7 @@ async def apply_leave_tool(
     user_id: str, leave_type: str, from_date: str, to_date: str, reason: str
 ) -> str:
     """Apply for leave in the system."""
+    logger.info("apply_leave_tool called for user: %s, type: %s", user_id, leave_type)
     from datetime import date
 
     from app.schemas.leave import LeaveApplyRequest
@@ -145,6 +153,7 @@ async def add_work_update_tool(
     tags: list[str] | None = None,
 ) -> str:
     """Add a work update entry."""
+    logger.info("add_work_update_tool called for user: %s, title: %s", user_id, title)
     from datetime import date
 
     try:

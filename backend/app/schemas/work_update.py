@@ -7,9 +7,12 @@ daily work log entries.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import uuid
 
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 class WorkUpdateCreate(BaseModel):

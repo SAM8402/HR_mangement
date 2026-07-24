@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from datetime import date, timedelta
+
+logger = logging.getLogger(__name__)
 
 
 def calculate_business_days(from_date: date, to_date: date) -> int:

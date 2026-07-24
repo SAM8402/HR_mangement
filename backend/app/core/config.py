@@ -9,6 +9,7 @@ using python-dotenv, then reads them via os.getenv.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -16,6 +17,8 @@ from dotenv import load_dotenv
 
 dotenv_path = Path(__file__).resolve().parents[2] / ".env"
 load_dotenv(dotenv_path)
+
+logger = logging.getLogger(__name__)
 
 
 class Settings:
@@ -52,11 +55,13 @@ class Settings:
     api_keys: list[str] = []
 
     def __init__(self):
+        logger.info("Loaded configuration")
         raw_key = self.GOOGLE_API_KEY
         if raw_key:
             self.api_keys = [k.strip() for k in raw_key.split(",") if k.strip()]
         else:
             self.api_keys = []
+        logger.info("Configured %d API key(s)", len(self.api_keys))
 
         if self.GOOGLE_API_KEY and "," in self.GOOGLE_API_KEY:
             keys = self.api_keys

@@ -6,10 +6,13 @@ job roles and company policies.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime
 
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 # ── Company Role ──────────────────────────────────────────────────────────────
 

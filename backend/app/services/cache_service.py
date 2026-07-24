@@ -7,11 +7,14 @@ methods for caching leave balances, work updates, and RAG queries.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import redis.asyncio as aioredis
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class CacheService:
@@ -36,12 +39,15 @@ class CacheService:
         try:
             val = await self._redis.get(key)
             if val is None:
+                logger.info("Cache miss for key %s", key)
                 return None
+            logger.info("Cache hit for key %s", key)
             try:
                 return json.loads(val)
             except (json.JSONDecodeError, TypeError):
                 return val
-        except Exception:
+        except Exception as e:
+            logger.error("Redis connection error: %s", e)
             return None
 
     async def set(self, key: str, value: Any, ttl: int = 300) -> None:
@@ -53,6 +59,7 @@ class CacheService:
                 json.dumps(value, default=str) if not isinstance(value, str) else value
             )
             await self._redis.set(key, serialized, ex=ttl)
+            logger.info("Setting cache key %s with TTL %d", key, ttl)
         except Exception:
             pass
 
@@ -61,6 +68,7 @@ class CacheService:
         if self._redis:
             try:
                 await self._redis.delete(key)
+                logger.info("Invalidating cache key %s", key)
             except Exception:
                 pass
 
@@ -74,6 +82,9 @@ class CacheService:
                 keys.append(key)
             if keys:
                 await self._redis.delete(*keys)
+                logger.info(
+                    "Clearing all cache for pattern %s (%d keys)", pattern, len(keys)
+                )
         except Exception:
             pass
 

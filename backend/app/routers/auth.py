@@ -6,9 +6,13 @@ and current-user profile retrieval.
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from app.core.dependencies import get_current_user
 from app.core.security import (
@@ -34,16 +38,20 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 @router.post("/login", response_model=TokenResponse)
 async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Authenticate user and return JWT tokens."""
+    logger.info("Login attempt for user %s", data.email)
+
     result = await db.execute(select(User).where(User.email == data.email))
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(data.password, user.password_hash):
+        logger.warning("Login failed for user %s", data.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
 
     if not user.is_active:
+        logger.warning("Login failed for user %s - account deactivated", data.email)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is deactivated",
@@ -56,6 +64,7 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     # Store refresh token in Redis
     await cache_service.set(f"refresh_token:{user.id}", refresh_token, ttl=86400 * 7)
 
+    logger.info("Login successful for user %s", user.id)
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -66,6 +75,7 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
 async def logout(current_user: User = Depends(get_current_user)):
     """Delete refresh token from Redis."""
     await cache_service.delete(f"refresh_token:{current_user.id}")
+    logger.info("Logout for user %s", current_user.id)
     return {"message": "Logged out successfully"}
 
 
@@ -123,6 +133,7 @@ async def refresh_token(
 
     await cache_service.set(f"refresh_token:{user.id}", new_refresh, ttl=86400 * 7)
 
+    logger.info("Token refreshed for user %s", user.id)
     return TokenResponse(
         access_token=new_access,
         refresh_token=new_refresh,

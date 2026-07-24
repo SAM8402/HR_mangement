@@ -6,10 +6,13 @@ including profile image updates and department name coercion.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date, datetime
 
 from pydantic import BaseModel, EmailStr, field_validator
+
+logger = logging.getLogger(__name__)
 
 
 class UserCreate(BaseModel):

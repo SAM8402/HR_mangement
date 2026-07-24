@@ -7,6 +7,7 @@ and mocked Redis / Gemini / Chroma for offline test execution.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncGenerator
 
 import pytest
@@ -20,6 +21,8 @@ from app.db.base import Base
 from app.main import app
 from app.models.user import User
 from app.services.cache_service import cache_service
+
+logger = logging.getLogger(__name__)
 
 DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -105,6 +108,7 @@ async def mock_redis(monkeypatch):
 @pytest_asyncio.fixture
 async def client(db_session) -> AsyncGenerator[AsyncClient, None]:
     """Test client overriding the db dependency."""
+    logger.info("Test client setup")
 
     async def override_get_db():
         yield db_session
@@ -116,6 +120,7 @@ async def client(db_session) -> AsyncGenerator[AsyncClient, None]:
         yield ac
 
     app.dependency_overrides.clear()
+    logger.info("Test teardown")
 
 
 @pytest_asyncio.fixture

@@ -6,8 +6,11 @@ and generating monthly or yearly reports.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,7 +52,9 @@ async def mark_attendance(
     current_user: User = Depends(get_current_user),
 ):
     """Mark today's attendance (check-in or check-out)."""
+    action = "check-in" if not data.notes else "check-out"
     record = await AttendanceService.mark_attendance(db, current_user.id, data.notes)
+    logger.info("Checked %s user %s", action, current_user.id)
     return record
 
 
@@ -61,6 +66,7 @@ async def today_status(
 ):
     """Get today's attendance status."""
     target_id = await _resolve_user_id(user_id, current_user)
+    logger.info("Fetching attendance for user %s", target_id)
     record = await AttendanceService.get_today_status(db, target_id)
     if not record:
         return AttendanceStatusResponse(
@@ -85,6 +91,7 @@ async def monthly_report(
 ):
     """Get attendance report for a specific month."""
     target_id = await _resolve_user_id(user_id, current_user)
+    logger.info("Attendance summary for user %s - %d/%d", target_id, year, month)
     report = await AttendanceService.get_monthly_report(db, target_id, year, month)
     return AttendanceReportResponse(
         records=[AttendanceResponse.model_validate(r) for r in report["records"]],
@@ -105,6 +112,7 @@ async def yearly_report(
 ):
     """Get attendance report for a full year."""
     target_id = await _resolve_user_id(user_id, current_user)
+    logger.info("Attendance summary for user %s - year %d", target_id, year)
     report = await AttendanceService.get_yearly_report(db, target_id, year)
     return AttendanceReportResponse(
         records=[AttendanceResponse.model_validate(r) for r in report["records"]],

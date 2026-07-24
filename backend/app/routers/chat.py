@@ -10,9 +10,12 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import time
 import uuid
 from typing import AsyncGenerator
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -137,6 +140,7 @@ async def get_history(
 ):
     uid = str(current_user.id)
     sid = session_id or await memory_service.create_session(uid)
+    logger.info("Chat history retrieved for session %s by user %s", sid, uid)
     history = await memory_service.get_history(uid, sid)
     ltm = await memory_service.get_all_long_term(uid)
     return {"history": history, "session_id": sid, "long_term_memory": ltm}
@@ -165,6 +169,7 @@ async def chat(
 ):
     uid = str(current_user.id)
     session_id = await _resolve_session(uid, data.session_id)
+    logger.info("Chat session started by user %s (session: %s)", uid, session_id)
 
     query_hash = hashlib.sha256(f"{uid}:{data.query}".encode()).hexdigest()
     cache_key = f"llm_response:{query_hash}"
@@ -275,6 +280,7 @@ async def chat(
     except Exception:
         pass
 
+    logger.info("Message sent to session %s by user %s", session_id, uid)
     return ChatResponse(
         answer=answer, intent=intent, citations=citations, session_id=session_id
     )
@@ -422,6 +428,9 @@ async def post_feedback(
     )
     db.add(feedback)
     await db.flush()
+    logger.info(
+        "Feedback submitted for message %s by user %s", feedback.id, current_user.id
+    )
 
     if data.rating and data.session_id:
         await memory_service.store_episode(

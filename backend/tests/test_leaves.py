@@ -7,8 +7,12 @@ with balance deduction verification.
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 from httpx import AsyncClient
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.mark.asyncio

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 
 from docx import Document
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -18,22 +19,28 @@ from pypdf import PdfReader
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 
 def extract_text_from_pdf(content: bytes) -> str:
     """Extract plain text from PDF bytes."""
     reader = PdfReader(io.BytesIO(content))
+    logger.info("Parsing document (PDF, %d bytes)", len(content))
     text_parts = []
     for i, page in enumerate(reader.pages):
         text = page.extract_text()
         if text:
             text_parts.append(text)
+    logger.info("Parsed %d pages from PDF document", len(reader.pages))
     return "\n\n".join(text_parts)
 
 
 def extract_text_from_docx(content: bytes) -> str:
     """Extract plain text from DOCX bytes."""
     doc = Document(io.BytesIO(content))
+    logger.info("Parsing document (DOCX, %d bytes)", len(content))
     text_parts = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+    logger.info("Parsed %d paragraphs from DOCX document", len(text_parts))
     return "\n".join(text_parts)
 
 
@@ -89,7 +96,8 @@ async def parse_role_text_with_llm(text: str) -> dict:
             "responsibilities": data.get("responsibilities", ""),
             "skills": data.get("skills", []),
         }
-    except Exception:
+    except Exception as e:
+        logger.error("Processing error for document: %s", e)
         # Fallback: if LLM fails, return simple structured dict
         lines = text.split("\n")
         title = lines[0] if lines else "Untitled Role"

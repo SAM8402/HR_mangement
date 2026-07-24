@@ -6,6 +6,7 @@ rejection, cancellation, and query operations.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date
 
@@ -17,6 +18,8 @@ from app.models.leave import LeaveBalance, LeaveRequest, LeaveType
 from app.models.user import User
 from app.schemas.leave import LeaveApplyRequest
 from app.utils.date_utils import calculate_business_days
+
+logger = logging.getLogger(__name__)
 
 
 class LeaveService:
@@ -30,6 +33,7 @@ class LeaveService:
         role = applicant.role
         dept_id = applicant.department_id
 
+        logger.info("Finding approver for user %s (role: %s)", applicant.id, role)
         if role == "employee":
             # Find HR or manager in the same department
             result = await db.execute(
@@ -44,6 +48,7 @@ class LeaveService:
             )
             approver = result.scalars().first()
             if approver:
+                logger.info("Approver found: %s", approver.id)
                 return approver.id
             # Fallback: any HR user
             result = await db.execute(
@@ -52,6 +57,10 @@ class LeaveService:
                 )
             )
             approver = result.scalars().first()
+            if approver:
+                logger.info("Approver found: %s", approver.id)
+            else:
+                logger.warning("No approver found for user %s", applicant.id)
             return approver.id if approver else None
 
         elif role == "hr":
@@ -65,6 +74,10 @@ class LeaveService:
                 )
             )
             approver = result.scalars().first()
+            if approver:
+                logger.info("Approver found: %s", approver.id)
+            else:
+                logger.warning("No approver found for user %s", applicant.id)
             return approver.id if approver else None
 
         elif role == "manager":
@@ -78,8 +91,13 @@ class LeaveService:
                 )
             )
             approver = result.scalars().first()
+            if approver:
+                logger.info("Approver found: %s", approver.id)
+            else:
+                logger.warning("No approver found for user %s", applicant.id)
             return approver.id if approver else None
 
+        logger.warning("No approver found for user %s", applicant.id)
         return None
 
     # ── Apply ─────────────────────────────────────────────────────────────
@@ -139,6 +157,13 @@ class LeaveService:
         # Find approver
         approver_id = await LeaveService._find_approver(db, user)
 
+        logger.info(
+            "Applying leave for user %s: type=%s, days=%d",
+            user_id,
+            data.leave_type,
+            business_days,
+        )
+
         leave_request = LeaveRequest(
             applicant_id=user_id,
             approver_id=approver_id,
@@ -173,6 +198,7 @@ class LeaveService:
             raise ValueError("You are not the assigned approver")
 
         leave.status = "approved"
+        logger.info("Approving leave %s by user %s", leave_id, approver_id)
 
         # Deduct balance for non-unpaid
         result = await db.execute(
@@ -193,6 +219,7 @@ class LeaveService:
             if balance:
                 balance.used_days += leave.business_days
                 balance.remaining_days = balance.total_days - balance.used_days
+                logger.info("Leave %s deducted from balance", leave_id)
 
         await db.flush()
         await db.refresh(leave)
@@ -221,6 +248,7 @@ class LeaveService:
 
         leave.status = "rejected"
         leave.rejection_reason = reason or "No reason provided"
+        logger.info("Rejecting leave %s by user %s", leave_id, approver_id)
         await db.flush()
         await db.refresh(leave)
         return leave
@@ -244,6 +272,7 @@ class LeaveService:
             raise ValueError(f"Cannot cancel a {leave.status} leave")
 
         leave.status = "cancelled"
+        logger.info("Cancelling leave %s by user %s", leave_id, user_id)
 
         # Restore balance if was approved (shouldn't happen, but just in case)
         if leave.status == "approved":

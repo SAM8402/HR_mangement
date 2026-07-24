@@ -7,6 +7,7 @@ using bcrypt for the HR Management System authentication layer.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -14,9 +15,13 @@ from jose import JWTError, jwt
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Create a JWT access token with expiration claim."""
+    user_id = data.get("sub", "unknown")
+    logger.info("Creating access token for user %s", user_id)
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -31,6 +36,8 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
 
 def create_refresh_token(data: dict) -> str:
     """Create a JWT refresh token with longer expiration."""
+    user_id = data.get("sub", "unknown")
+    logger.info("Creating refresh token for user %s", user_id)
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(
         days=settings.REFRESH_TOKEN_EXPIRE_DAYS
@@ -53,6 +60,7 @@ def verify_token(token: str) -> dict:
         )
         return payload
     except JWTError as e:
+        logger.warning("Token verification failed: %s", e)
         raise ValueError(f"Invalid token: {e}") from e
 
 
@@ -61,12 +69,17 @@ def hash_password(password: str) -> str:
     pw_bytes = password.encode("utf-8")
     salt = bcrypt.gensalt()
     hashed = bcrypt.hashpw(pw_bytes, salt)
+    logger.debug("Password hashing completed")
     return hashed.decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     """Verify a plaintext password against a bcrypt hash."""
     try:
-        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+        result = bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+        if not result:
+            logger.warning("Password verification failed")
+        return result
     except Exception:
+        logger.warning("Password verification failed")
         return False

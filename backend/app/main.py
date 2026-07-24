@@ -7,6 +7,7 @@ database setup, seed data population, and cache connections.
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from datetime import date
 
@@ -36,10 +37,13 @@ from app.models import (  # noqa: F401  — ensure all models are registered
 from app.services.cache_service import cache_service
 from app.services.memory_service import memory_service
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown events."""
+    logger.info("Starting application")
     # ── Startup ───────────────────────────────────────────────────────────
     # Create tables
     async with engine.begin() as conn:
@@ -127,6 +131,8 @@ async def lifespan(app: FastAPI):
     await cache_service.delete_pattern("leave_balance:*")
     await memory_service.connect()
 
+    logger.info("Application started successfully")
+
     yield
 
     # ── Shutdown ──────────────────────────────────────────────────────────
@@ -186,6 +192,8 @@ app.include_router(rules.router)
 app.include_router(chat.router)
 app.include_router(docs.router)
 app.include_router(departments.router)
+
+logger.info("Registered %d API routers", len(app.routes))
 
 
 @app.get("/")
