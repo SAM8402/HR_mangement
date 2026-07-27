@@ -226,6 +226,26 @@ async def delete_rule_doc(
     return {"message": f"Rule document '{filename}' deleted"}
 
 
+@router.post("/roles/upload")
+async def upload_role_doc_backward(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "manager", "hr")),
+    background_tasks: BackgroundTasks = None,
+):
+    return await upload_role_doc(file, db, current_user, background_tasks)
+
+
+@router.post("/rules/upload")
+async def upload_rule_doc_backward(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin", "manager", "hr")),
+    background_tasks: BackgroundTasks = None,
+):
+    return await upload_rule_doc(file, db, current_user, background_tasks)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 #  /api/roles  —  company role CRUD (including document upload)
 # ═══════════════════════════════════════════════════════════════════════════════
