@@ -11,6 +11,7 @@ import os
 
 from langchain_chroma import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.core.config import settings
 
@@ -75,10 +76,21 @@ def delete_embeddings(doc_id: str) -> None:
         pass
 
 
+def chunk_text(
+    text: str, chunk_size: int = 1000, chunk_overlap: int = 200
+) -> list[str]:
+    """Split text into overlapping chunks using RecursiveCharacterTextSplitter."""
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        separators=["\n\n", "\n", "• ", "; ", " ", ""],
+    )
+    return splitter.split_text(text)
+
+
 async def embed_document(text: str, metadata: dict) -> None:
     """Add a document to the vector store after chunking."""
     from app.services.cache_service import cache_service
-    from app.services.doc_processor import chunk_text
 
     chunks = chunk_text(text)
     if not chunks:

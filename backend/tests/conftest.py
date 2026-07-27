@@ -98,10 +98,15 @@ async def mock_redis(monkeypatch):
                 if match is None or fnmatch.fnmatch(k, match):
                     yield k
 
+    from app.services.memory_service import memory_service
+
     mock_r = MockRedis()
     monkeypatch.setattr(cache_service, "_redis", mock_r)
     monkeypatch.setattr(cache_service, "connect", lambda: asyncio.sleep(0))
     monkeypatch.setattr(cache_service, "disconnect", lambda: asyncio.sleep(0))
+    monkeypatch.setattr(memory_service, "_redis", mock_r)
+    monkeypatch.setattr(memory_service, "connect", lambda: asyncio.sleep(0))
+    monkeypatch.setattr(memory_service, "disconnect", lambda: asyncio.sleep(0))
     yield mock_r
 
 

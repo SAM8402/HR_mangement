@@ -177,18 +177,17 @@ from app.routers import (
     departments,
     docs,
     leaves,
-    roles,
-    rules,
     work_updates,
 )
+from app.routers.docs import roles_router, rules_router
 
 app.include_router(attendance.router)
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(leaves.router)
 app.include_router(work_updates.router)
-app.include_router(roles.router)
-app.include_router(rules.router)
+app.include_router(roles_router)
+app.include_router(rules_router)
 app.include_router(chat.router)
 app.include_router(docs.router)
 app.include_router(departments.router)

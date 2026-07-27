@@ -19,7 +19,7 @@ from langchain_core.messages import AIMessage
 
 from app.ai.embeddings import hybrid_search, rerank_documents_with_llm
 from app.models.company_rule import CompanyRule
-from app.services.doc_processor import chunk_text
+from app.ai.embeddings import chunk_text
 
 # ── Mocks Setup ───────────────────────────────────────────────────────────────
 
@@ -109,14 +109,35 @@ def mock_gemini(monkeypatch):
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.asyncio
-async def test_chunk_text():
-    """Test text chunking logic."""
-    text = "Hello World. " * 200
-    chunks = chunk_text(text, chunk_size=100, chunk_overlap=20)
-    assert len(chunks) > 1
-    # Check that chunks are split reasonably
-    assert all(len(c) <= 150 for c in chunks)
+class TestChunkText:
+    """Tests for the chunk_text function moved from doc_processor."""
+
+    def test_splits_large_text(self):
+        text = "Hello World. " * 200
+        chunks = chunk_text(text, chunk_size=100, chunk_overlap=20)
+        assert len(chunks) > 1
+        assert all(len(c) <= 150 for c in chunks)
+
+    def test_small_text_stays_single_chunk(self):
+        text = "Short text."
+        chunks = chunk_text(text, chunk_size=1000, chunk_overlap=200)
+        assert len(chunks) == 1
+        assert chunks[0] == "Short text."
+
+    def test_respects_chunk_size(self):
+        text = "word " * 500
+        chunks = chunk_text(text, chunk_size=500, chunk_overlap=50)
+        assert all(len(c) <= 550 for c in chunks)
+
+    def test_empty_text(self):
+        assert chunk_text("") == []
+
+    @pytest.mark.asyncio
+    async def test_chunk_text_async(self):
+        text = "Hello World. " * 200
+        chunks = chunk_text(text, chunk_size=100, chunk_overlap=20)
+        assert len(chunks) > 1
+        assert all(len(c) <= 150 for c in chunks)
 
 
 @pytest.mark.asyncio

@@ -45,11 +45,11 @@ async def test_apply_leave_success(client: AsyncClient, test_users):
     )
     token = login_res.json()["access_token"]
 
-    # Apply for 3 days of casual leave in future: July 1 to July 3, 2026 (Wednesday to Friday)
+    # Apply for 3 days of casual leave: Aug 3 to Aug 5, 2026 (Mon-Wed, 3 business days)
     apply_payload = {
         "leave_type": "casual",
-        "from_date": "2026-07-01",
-        "to_date": "2026-07-03",
+        "from_date": "2026-08-03",
+        "to_date": "2026-08-05",
         "reason": "Family trip",
     }
     response = await client.post(
@@ -73,11 +73,11 @@ async def test_apply_leave_insufficient_balance(client: AsyncClient, test_users)
     )
     token = login_res.json()["access_token"]
 
-    # Sick leave has 12 days; try to apply for 20 days (July 1 to July 28, 2026)
+    # Sick leave has 12 days; try to apply for 20 days (Aug 3 to Aug 28, 2026)
     apply_payload = {
         "leave_type": "sick",
-        "from_date": "2026-07-01",
-        "to_date": "2026-07-28",
+        "from_date": "2026-08-03",
+        "to_date": "2026-08-28",
         "reason": "Medical recovery",
     }
     response = await client.post(
@@ -101,8 +101,8 @@ async def test_approve_leave_workflow(client: AsyncClient, test_users):
 
     apply_payload = {
         "leave_type": "casual",
-        "from_date": "2026-07-01",
-        "to_date": "2026-07-02",
+        "from_date": "2026-08-03",
+        "to_date": "2026-08-04",
         "reason": "Personal work",
     }
     apply_res = await client.post(
@@ -139,6 +139,6 @@ async def test_approve_leave_workflow(client: AsyncClient, test_users):
     )
     balances = balance_res.json()
     casual = next(b for b in balances if b["leave_type_name"] == "casual")
-    # 18 - 2 business days (July 1 and July 2) = 16 remaining
+    # 18 - 2 business days (Aug 3 and Aug 4) = 16 remaining
     assert casual["remaining_days"] == 16
     assert casual["used_days"] == 2

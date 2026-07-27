@@ -14,7 +14,6 @@ import logging
 from docx import Document
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 
 from app.core.config import settings
@@ -44,16 +43,67 @@ def extract_text_from_docx(content: bytes) -> str:
     return "\n".join(text_parts)
 
 
-def chunk_text(
-    text: str, chunk_size: int = 1000, chunk_overlap: int = 200
-) -> list[str]:
-    """Split text into overlapping chunks using RecursiveCharacterTextSplitter."""
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        separators=["\n\n", "\n", " ", ""],
+def _parse_text_locally(lines: list[str]) -> dict:
+    """Extract structured role info from text lines using keyword detection."""
+    title = lines[0] if lines else "Untitled Role"
+    current_section = "description"
+    section_buffers: dict[str, list[str]] = {
+        "description": [],
+        "responsibilities": [],
+        "skills": [],
+    }
+    skills: list[str] = []
+
+    skill_keywords = {"skills", "required skills", "requirements", "qualifications"}
+    resp_keywords = {
+        "responsibilities",
+        "duties",
+        "key responsibilities",
+        "what you'll do",
+    }
+
+    for line in lines[1:]:
+        lower = line.lower().rstrip(":")
+        if lower in skill_keywords:
+            current_section = "skills"
+            continue
+        if lower in resp_keywords:
+            current_section = "responsibilities"
+            continue
+
+        if current_section == "skills":
+            skill_text = line.strip()
+            if skill_text:
+                skills.append(skill_text)
+        elif current_section == "responsibilities":
+            section_buffers["responsibilities"].append(line)
+        else:
+            section_buffers["description"].append(line)
+
+    description = " ".join(section_buffers["description"])
+    responsibilities = " ".join(section_buffers["responsibilities"])
+
+    if not description and not responsibilities:
+        description = " ".join(lines[1:])
+
+    return {
+        "title": title or "Untitled Role",
+        "description": description,
+        "responsibilities": responsibilities,
+        "skills": skills,
+    }
+
+
+def parse_docx(file_content: bytes) -> dict:
+    """Parse a .docx file and extract structured role information locally."""
+    doc = Document(io.BytesIO(file_content))
+    logger.info("Parsing document with %d bytes", len(file_content))
+    paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+    result = _parse_text_locally(paragraphs)
+    logger.info(
+        "Parsed %d sections from document %s", len(paragraphs), result["title"]
     )
-    return splitter.split_text(text)
+    return result
 
 
 async def parse_role_text_with_llm(text: str) -> dict:
@@ -97,13 +147,5 @@ async def parse_role_text_with_llm(text: str) -> dict:
             "skills": data.get("skills", []),
         }
     except Exception as e:
-        logger.error("Processing error for document: %s", e)
-        # Fallback: if LLM fails, return simple structured dict
-        lines = text.split("\n")
-        title = lines[0] if lines else "Untitled Role"
-        return {
-            "title": title[:100],
-            "description": text[:500],
-            "responsibilities": text,
-            "skills": [],
-        }
+        logger.error("LLM parsing failed, falling back to local parser: %s", e)
+        return _parse_text_locally(text.split("\n"))

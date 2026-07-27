@@ -46,8 +46,8 @@ async def apply_leave(
         logger.info(
             "Leave applied by user %s (type: %s, days: %s)",
             current_user.id,
-            data.leave_type_id,
-            data.days,
+            data.leave_type,
+            leave.business_days,
         )
         return leave
     except ValueError as e:
